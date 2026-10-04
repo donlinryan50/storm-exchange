@@ -1,0 +1,10 @@
+# secrets: the service_role key and any local env files must never be committed
+.env
+.env.*
+*.key
+# old platform exports (large, and already uploaded with migration/seed.py)
+migration/artifact-export/
+# editor / OS
+.DS_Store
+Thumbs.db
+__pycache__/

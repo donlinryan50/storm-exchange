@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Storm Exchange</title>
+<meta name="description" content="Storm Exchange: a Fortnite pro player stock market. Bet up or down on pros, climb the season leaderboard, win prizes.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@500;600;700&family=Rubik:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="styles.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o" crossorigin="anonymous" defer></script>
+<script src="config.js" defer></script>
+<script src="app.js" defer></script>
+</head>
+<body>
+
+<header>
+  <div class="hd">
+    <div class="brand"><h1>STORM<span>EX</span></h1><span class="label">Pro player futures</span></div>
+    <div class="stats">
+      <div class="stat"><span class="label">Your net worth</span><b id="hdNet">—</b></div>
+      <div class="stat"><span class="label">Return</span><b id="hdRet">—</b></div>
+      <div class="stat"><span class="label">Gold Bars</span><b id="hdCash">—</b></div>
+    </div>
+    <button class="acct" id="acct" hidden aria-label="Trader profile"><img id="acctAv" alt="" hidden><span class="acct-t"><span class="label" id="acctSub">Trader</span><b id="acctTag">Sign in</b></span></button>
+  </div>
+  <nav role="tablist">
+    <button role="tab" data-tab="home" aria-selected="true">Home</button>
+    <button role="tab" data-tab="market" aria-selected="false">Market</button>
+    <button role="tab" data-tab="heat" aria-selected="false">Heatmap</button>
+    <button role="tab" data-tab="portfolio" aria-selected="false">My portfolio</button>
+    <button role="tab" data-tab="leaders" aria-selected="false">Leaderboard</button>
+    <button id="simTab" data-sim="start" hidden>Test run</button>
+  </nav>
+</header>
+<div class="ticker" aria-label="Live market values"><div class="ticker-track" id="ticker"></div></div>
+
+<div id="loginRoot" hidden></div>
+<div id="homeRoot" hidden></div>
+<main class="wrap" id="mainView">
+  <section class="intro">
+    <div>
+      <h2>Buy the hype. Sell the fall-off.</h2>
+      <p>Prices move with the crowd. Every <span class="impact">2,500</span> gold bars bought pushes a player's market value up about 1%, and selling or shorting pushes it down the same way. No single player can be more than 40% of your net worth when you buy in. Bet <b class="up">up</b> on players you think are about to pop off and <b class="down">down</b> on players you think are overhyped, using their PR and recent tournaments as a guide. The market gets wild around FNCS, Victory Cash Cups and other big events, and the top traders at the end of each season win prizes. Click any name for their chart.</p>
+    </div>
+    <div class="clock" id="seasonClock"><div class="big">OPEN</div><div class="label">Market open 24/7</div></div>
+  </section>
+  <div id="banner"></div>
+  <div id="view"></div>
+</main>
+<div id="ticketRoot"></div>
+<div id="simRoot"></div>
+<div id="toastRoot"></div>
+
+</body>
+</html>
