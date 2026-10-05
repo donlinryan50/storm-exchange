@@ -105,23 +105,38 @@ def stats(players_src, prev_dir, txt, out_dir):
             for e in ev: e["id"] = seed_id(e)
             prev[pid] = {"ev": ev}
     lines = open(txt, encoding="utf-8").read().strip().splitlines()
-    done = []
-    fresh = {}
+    done, fresh, meta, upcoming = [], {}, {}, []
     for line in lines:
         if line.startswith("#DONE"): done = [w for w in line[5:].strip().split(",") if w]; continue
-        if "=" not in line: continue
+        if line.startswith("#WIN "):       # a window fetched this run: w|begin|end|complete|entries
+            w, b, e, c, _n = (line[5:].split("|") + ["", "", "", "0", "0"])[:5]
+            meta[w] = {"b": b, "end": e, "c": c == "1", "n": int(_n or 0)}; continue
+        if line.startswith("#UPCOMING "):  # scheduled windows coming up: w|begin|end
+            w, b, e = (line[10:].split("|") + ["", ""])[:3]; upcoming.append({"w": w, "b": b, "end": e}); continue
+        if line.startswith("#") or "=" not in line: continue
         pid, rest = line.split("=", 1)
         for ent in rest.split(";"):
             w, d, rk, pts, team, mts = ent.split("|", 5)
             mt = [[int(float(x)) for x in m.split(".")] for m in mts.split("_")] if mts else []
             name, k = label(w); n = len(mt)
             reg = "EU" if w.endswith("_EU") else "NAC"
+            wm = meta.get(w, {})
             fresh.setdefault(pid, {})[w] = {"id": w, "t": d, "e": name, "k": k, "r": reg, "rk": int(rk), "pts": int(pts),
                 "team": team == "1", "m": n, "w": sum(x[3] for x in mt), "el": sum(x[1] for x in mt),
-                "ap": round(sum(x[0] for x in mt) / n, 1) if n else None, "mt": mt}
+                "ap": round(sum(x[0] for x in mt) / n, 1) if n else None, "mt": mt,
+                "c": wm.get("c", w in done), "b": wm.get("b") or None, "end": wm.get("end") or None}
+    # Every window fetched this run REPLACES what was stored for it: players who no longer appear in its
+    # results (e.g. finished outside the places we read) lose their old partial entry instead of keeping it.
+    fetched, done_set = set(meta), set(done)
+    unmatched = []
     merged = {}
     for pid in players:
-        evs = {e["id"]: e for e in prev.get(pid, {}).get("ev", [])}
+        # a player found in no window at all is a name lookup miss (renamed Epic account), not a wipe: keep theirs
+        keep = pid not in fresh
+        if keep and any(e.get("id") in fetched for e in prev.get(pid, {}).get("ev", [])): unmatched.append(pid)
+        evs = {e["id"]: e for e in prev.get(pid, {}).get("ev", []) if keep or e.get("id") not in fetched}
+        for e in evs.values():
+            if "c" not in e: e["c"] = e.get("id") in done_set   # older entries: complete if their window is
         evs.update(fresh.get(pid, {}))
         merged[pid] = sorted(evs.values(), key=lambda e: (e["t"], e["e"]), reverse=True)
     all_done = sorted(set(done))  # the scraper reports previously finished windows plus newly finished ones
@@ -138,10 +153,35 @@ def stats(players_src, prev_dir, txt, out_dir):
         p = os.path.join(out_dir, f"chunk_{i}.json"); jdump({"run": run, "at": at, "players": c}, p)
         writes.append({"op": "set", "collection": "statschunks", "doc_id": f"{run}-{i}", "file_path": p.replace("\\", "/")})
     rp = os.path.join(out_dir, "run.json")
-    jdump({"at": at, "chunks": len(chunks), "done": all_done, "players": sum(1 for v in merged.values() if v)}, rp)
+    pending = [{"w": w, "end": m["end"]} for w, m in sorted(meta.items()) if not m["c"] and (m["n"] or m["b"])]   # unscheduled + empty = not started
+    jdump({"at": at, "chunks": len(chunks), "done": all_done, "players": sum(1 for v in merged.values() if v),
+           "pending": pending, "upcoming": upcoming}, rp)
     writes.append({"op": "set", "collection": "statsruns", "doc_id": run, "file_path": rp.replace("\\", "/")})
     print(json.dumps(writes, ensure_ascii=False))
-    print(f"# run {run}: {len(chunks)} chunks, {sum(len(v) for v in fresh.values())} new/updated results for {len(fresh)} players, {len(all_done)} finished windows")
+    print(f"# run {run}: {len(chunks)} chunks, {sum(len(v) for v in fresh.values())} new/updated results for {len(fresh)} players, "
+          f"{len(meta)} windows fetched, {len(all_done)} complete, {len(pending)} still in progress")
+    if unmatched: print("# not found in any fetched window (Epic name changed?), kept old results:", ", ".join(unmatched))
+
+def diff(prev_dir, stats_dir, days="7"):
+    """List stored events that changed between W/prev (before) and W/stats (after), within the last N days."""
+    before, after = {}, {}
+    for d in docs(prev_dir).values(): before.update(d.get("players", {}))
+    for f in glob.glob(os.path.join(stats_dir, "chunk_*.json")): after.update(body(jload(f))["players"])
+    cut = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=int(days))).date().isoformat()
+    rows = []
+    for pid in sorted(set(before) | set(after)):
+        b = {e["id"]: e for e in (before.get(pid) or {}).get("ev", [])}
+        a = {e["id"]: e for e in (after.get(pid) or {}).get("ev", [])}
+        for w in sorted(set(b) | set(a)):
+            x, y = b.get(w), a.get(w)
+            if (y or x)["t"] < cut: continue
+            if x and y and (x["rk"], x["m"], x["pts"]) == (y["rk"], y["m"], y["pts"]): continue
+            rows.append((pid, w, x, y))
+    for pid, w, x, y in rows:
+        f = lambda e: f"#{e['rk']}, {e['m']} games, {e['pts']} pts" if e else "none"
+        state = "" if not y else (" (complete)" if y.get("c") else " (in progress)")
+        print(f"{pid:16} {w.replace('S42_', ''):48} {f(x):28} -> {f(y)}{state}")
+    print(f"# diff: {len(rows)} events changed in the last {days} days across {len({r[0] for r in rows})} players")
 
 def cleanup(runs_dir, chunks_dir, snaps_dir):
     runs = sorted(docs(runs_dir).keys(), reverse=True)
@@ -320,7 +360,9 @@ def shocks(prev_json, season_json, stats_dir, prsnap_json, players_dir, out):
         if q:
             days = [e["t"] for e in ev.get(w, {}).values() if e.get("t")]
             if not days: continue
-            if min(days) < season["start"][:10]: prev["done"].append(w); continue   # before this season: skip for good
+            began = next((e.get("b") for e in ev.get(w, {}).values() if e.get("b")), None)
+            if (began or min(days)) < (season["start"] if began else season["start"][:10]):
+                prev["done"].append(w); continue   # began before this season: skip for good
             todo.append((w, f"Q{q[1]} Round {q[2]}", "solo")); continue
         m = re.match(r"S\d+_FNCSDivisionalCup_Division1_Week(\d)Final_(EU|NAC)$", w)
         if not m: continue
@@ -391,7 +433,7 @@ def rating(forms_dir, hist_txt, params_json, out_dir):
     forms = {}
     for f in glob.glob(os.path.join(forms_dir, "*.json")):
         d = body(jload(f))
-        if isinstance(d, dict) and "players" in d: forms.update(d["players"])
+        if isinstance(d, dict) and isinstance(d.get("players"), dict): forms.update(d["players"])   # run.json's "players" is a count
     events = {pid: [(rating_kind(e), e.get("rk"), e.get("t")) for e in (v or {}).get("ev", [])] for pid, v in forms.items()}
     if hist_txt != "-" and os.path.exists(hist_txt):
         for line in open(hist_txt, encoding="utf-8"):
@@ -418,4 +460,4 @@ def rating(forms_dir, hist_txt, params_json, out_dir):
 
 if __name__ == "__main__":
     mode, args = sys.argv[1], sys.argv[2:]
-    {"prep": prep, "pr": pr, "stats": stats, "cleanup": cleanup, "audit": audit, "newseason": newseason, "shocks": shocks, "rating": rating}[mode](*args)
+    {"prep": prep, "pr": pr, "stats": stats, "cleanup": cleanup, "audit": audit, "newseason": newseason, "shocks": shocks, "rating": rating, "diff": diff}[mode](*args)

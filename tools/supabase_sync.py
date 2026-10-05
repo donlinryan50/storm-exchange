@@ -123,8 +123,8 @@ def push_stats(W):
     changed = [pid for pid, form in new.items() if (prev.get(pid) or {}).get("ev") != form.get("ev")]
     for pid in changed:
         call("PATCH", "players?id=eq." + urllib.parse.quote(pid), {"form": new[pid]}, "return=minimal")
-    set_meta("stats", {"at": run["at"], "done": run["done"]})
-    print(f"stats: {len(changed)} players updated, {len(run['done'])} finished windows")
+    set_meta("stats", {"at": run["at"], "done": run["done"], "pending": run.get("pending", []), "upcoming": run.get("upcoming", [])})
+    print(f"stats: {len(changed)} players updated, {len(run['done'])} finished windows, {len(run.get('pending', []))} still in progress")
 
 def push_shocks(W):
     prev = jload(os.path.join(W, "shk", "prev.json")); out = jload(os.path.join(W, "shk", "out.json"))
@@ -137,16 +137,22 @@ def push_shocks(W):
     print(f"shocks: {len(new)} new price moves")
 
 def should_run():
-    """RUN if an event started in the last 14 hours or starts within the hour, or it's before 10:00 local; else SKIP."""
+    """RUN if a tournament window is unfinished, is running, starts within the hour or ended in the last 14 hours
+    (Osirion's official schedule, saved by the last stats run), or an FNCS event is on, or it's before 10:00 local."""
     now = dt.datetime.now(dt.timezone.utc)
+    def hours_until(t): return (dt.datetime.fromisoformat(t.replace("Z", "+00:00")) - now).total_seconds() / 3600
     events = (meta("events") or {}).get("events", [])
-    def hours_until(e): return (dt.datetime.fromisoformat(e["t"].replace("Z", "+00:00")) - now).total_seconds() / 3600
-    event_day = any(-14 <= hours_until(e) <= 1 for e in events)   # started in the last 14h, or starts within the hour
+    event_day = any(-14 <= hours_until(e["t"]) <= 1 for e in events)   # started in the last 14h, or starts within the hour
+    stats = meta("stats") or {}
+    pending = len(stats.get("pending") or [])          # fetched but not complete yet: keep re-fetching until they are
+    live = any(w.get("b") and w.get("end") and hours_until(w["b"]) <= 1 and hours_until(w["end"]) >= -14
+               for w in stats.get("upcoming") or [])
+    event_day = event_day or pending > 0 or live
     first_run = dt.datetime.now().hour < 10
     force = os.path.join(os.path.expanduser("~"), ".stormex", "force_next_run")   # one-time manual override
     forced = os.path.exists(force)
     if forced: os.remove(force)
-    print(("RUN" if event_day or first_run or forced else "SKIP") + f" event_day={event_day} first_run_today={first_run}" + (" forced=True" if forced else ""))
+    print(("RUN" if event_day or first_run or forced else "SKIP") + f" event_day={event_day} pending_windows={pending} first_run_today={first_run}" + (" forced=True" if forced else ""))
 
 def latest_prsnap(W):
     rows = call("GET", "prsnaps?select=at,pr,note&order=at.desc&limit=1")

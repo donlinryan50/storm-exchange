@@ -140,6 +140,7 @@ g:hover>.pc-dot{stroke:var(--fg)}
 .ftbl .place{color:var(--fg)}
 .ftbl .place.m1{color:var(--medal-1)} .ftbl .place.m2{color:var(--medal-2)} .ftbl .place.m3{color:var(--medal-3)}
 .reg{font-family:var(--f-label);font-size:10px;letter-spacing:.06em;background:var(--panel);color:var(--muted);padding:1px 5px;margin-left:4px;vertical-align:1px}
+.reg.live{color:var(--gold,#e8b84a)}
 .t-note.src{font-size:12px}
 .ranges{display:flex;gap:4px}
 .ranges button{background:var(--panel);border:2px solid var(--line);padding:3px 10px;font-family:var(--f-display);font-weight:400;font-size:14px;letter-spacing:.04em;color:var(--muted);transform:skewX(-10deg)}

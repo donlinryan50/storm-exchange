@@ -877,7 +877,7 @@ function formHTML(p){
     const key = p.id+":"+i, open = S.formOpen===key, has = (e.mt||[]).length>0;
     return `<tr class="ev k-${esc(e.k)}${has?" can":""}${open?" open":""}" ${has?`data-form="${esc(key)}" tabindex="0" aria-expanded="${open}"`:""}>
       <td class="num">${has?`<span class="chev" aria-hidden="true">${open?"▾":"▸"}</span>`:""}${esc(dLabel(dayMs(e.t)))}</td>
-      <td><span class="ek">${e.k==="div" ? `Div ${(e.e.match(/^Division (\d)/)||[,1])[1]} Cup` : {vc:"Victory Cup",fncs:"FNCS",pe:"Perf Eval"}[e.k]||""}</span>${esc(e.e.replace(/^Solo Victory Cup (\d)/,"Cup $1").replace(/^Division \d Cup, /,"").replace(/^FNCS Solos Qualifier, /,"Solos Qualifier, ").replace(/^Performance Evaluation (\d),/,"Session $1,"))}${e.team?` <span class="reg">TEAM</span>`:""}${e.r!==home?` <span class="reg">${esc(e.r)}</span>`:""}</td>
+      <td><span class="ek">${e.k==="div" ? `Div ${(e.e.match(/^Division (\d)/)||[,1])[1]} Cup` : {vc:"Victory Cup",fncs:"FNCS",pe:"Perf Eval"}[e.k]||""}</span>${esc(e.e.replace(/^Solo Victory Cup (\d)/,"Cup $1").replace(/^Division \d Cup, /,"").replace(/^FNCS Solos Qualifier, /,"Solos Qualifier, ").replace(/^Performance Evaluation (\d),/,"Session $1,"))}${e.team?` <span class="reg">TEAM</span>`:""}${e.r!==home?` <span class="reg">${esc(e.r)}</span>`:""}${e.c===false?` <span class="reg live" title="Still running: results update on every refresh until it ends">IN PROGRESS</span>`:""}</td>
       <td class="r place${medal(e.rk)}">${ord(e.rk)}</td>
       <td class="r num">${e.k==="vc"?"–":fmt(e.pts)}</td>
       <td class="r num">${e.w}</td>
