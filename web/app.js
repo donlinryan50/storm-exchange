@@ -1099,7 +1099,7 @@ function drawHeat(){
     const H = Math.round((W < 600 ? W*1.15 : Math.max(300, W*.5)) * Math.max(1, Math.sqrt(ps.length/25))); m.style.height = H+"px";
     const ws = heatWeights(ps), total = ws.reduce((a,b)=>a+b,0);
     const tiles = squarify(ps.map((p,i)=>({p, a:ws[i]/total*W*H})).sort((a,b)=>b.a-a.a), 0, 0, W, H);
-    m.innerHTML = tiles.map(({p,x,y,w,h})=>{ const c = heatChange(p), big = w>110 && h>70, mid = w>64 && h>40;
+    m.innerHTML = tiles.map(({p,x,y,w,h})=>{ const c = heatChange(p), big = w>110 && h>96, mid = w>64 && h>46;   // only show lines that fit
       return `<button class="hm-tile${big?" big":mid?"":" tiny"}" data-open="${esc(p.id)}" style="left:${x.toFixed(1)}px;top:${y.toFixed(1)}px;width:${w.toFixed(1)}px;height:${h.toFixed(1)}px;background:${heatColor(c,S.heatMax)}" title="${esc(p.name)} · ${fmt(p.price)} · ${pct(c)}">
         <b>${tierArrow(p.id) ? `<i class="tmv" title="${esc(tierTitle(p))}">${tierArrow(p.id)}</i>` : ""}${esc(p.name)}</b>${mid?`<span class="pc">${pct(c)}</span>`:""}${big?`<span class="px">${fmt(p.price)}</span>`:""}</button>`; }).join("");
   });
