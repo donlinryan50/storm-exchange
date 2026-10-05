@@ -71,6 +71,8 @@ nav button[aria-selected="true"]{background:var(--gold);color:var(--gold-ink);bo
 .row{display:grid;grid-template-columns:28px minmax(0,1.6fr) 90px 80px 120px minmax(110px,1fr) 150px;gap:12px;align-items:center;padding:10px 14px;border-top:2px solid var(--bar)}
 .row.head{border-top:0;background:var(--bar);padding-block:8px}
 .row.player{cursor:pointer}
+.board .more{display:block;width:100%;padding:12px;border:0;border-top:2px solid var(--bar);background:var(--panel-2);color:var(--fg);font-family:var(--f-label);font-size:14px;letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
+.board .more:hover{color:var(--gold)}
 .row.player:hover{background-color:var(--panel-2)}
 .row.player:hover .pname{color:var(--gold)}
 .rank{color:var(--muted);font-family:var(--f-display);font-size:18px}

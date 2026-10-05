@@ -560,7 +560,8 @@ function marketHTML(){
   const chg = p => (p.price-p.open)/p.open;
   const sorters = {price:(a,b)=>b.price-a.price, gain:(a,b)=>chg(b)-chg(a), loss:(a,b)=>chg(a)-chg(b), pr:(a,b)=>(b.pr||0)-(a.pr||0), bulls:(a,b)=>((sent[b.id]?.long||0)-(sent[b.id]?.short||0))-((sent[a.id]?.long||0)-(sent[a.id]?.short||0)), name:(a,b)=>a.name.localeCompare(b.name)};
   list.sort(sorters[S.sort]);
-  const rows = list.map((p,i)=>{
+  const TOP = 20, folded = !q && !S.mkAll && list.length > TOP;   // searching always shows every match
+  const rows = (folded ? list.slice(0, TOP) : list).map((p,i)=>{
     const c = chg(p), s = sent[p.id]||{long:0,short:0}, tot = s.long+s.short;
     const lp = tot? s.long/tot*100 : 50;
     const mine = S.me.pos[p.id];
@@ -586,6 +587,7 @@ function marketHTML(){
     <div class="board">
       <div class="row head"><span></span><span class="label">Player</span><span class="label" style="text-align:right">Market value</span><span class="label" style="text-align:right">Since IPO</span><span class="label">Trend</span><span class="label">Crowd</span><span></span></div>
       ${rows}
+      ${list.length > TOP && !q ? `<button class="more" data-mkall aria-expanded="${!folded}">${folded ? `Show all ${list.length} players ▾` : `Show top ${TOP} only ▴`}</button>` : ""}
     </div>
     <div class="how">
       <div><b>Live prices</b>Every <span class="impact">2,500</span> gold bars bought moves a player's price up about 1%, and selling or shorting moves it down. Cheap or expensive, every pro moves the same for the same money.</div>
@@ -979,6 +981,7 @@ document.addEventListener("click", e=>{
   if(el.dataset.plrange){ S.plRange = el.dataset.plrange; render(); return; }
   if(el.dataset.evr){ S.evRegion = el.dataset.evr; try{ localStorage.setItem("stormex-evregion", S.evRegion); }catch(_){} renderEvents(); return; }
   if(el.dataset.tierf){ S.tier = +el.dataset.tierf; render(); return; }
+  if("mkall" in el.dataset){ S.mkAll = !S.mkAll; render(); return; }
   if(el.dataset.open){ openTicket(el.dataset.open, el.dataset.side); return; }
   const t = S.ticket; if(!t) return;
   const p = byId(t.id), cur = S.me.pos[t.id];
