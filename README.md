@@ -9,7 +9,7 @@ web/              the website (plain HTML/CSS/JS, no build step)
 supabase/
   schema.sql      database tables, security rules and server-side trading (run once)
 migration/
-  seed.py         uploads players, a year of tournament stats, PR history, events and Season 1
+  seed.py         uploads players, a year of tournament stats, events and Season 1
 vercel.json       hosting settings + security headers
 ```
 
@@ -57,7 +57,7 @@ set SUPABASE_URL=https://YOUR-PROJECT.supabase.co
 set SUPABASE_SERVICE_ROLE_KEY=paste-the-service_role-key
 python migration\seed.py
 ```
-It uploads 394 players, their tournament results, PR history, the event schedule and Season 1.
+It uploads 394 players, their tournament results, the event schedule and Season 1.
 
 ### 4. Try it locally
 ```
@@ -96,6 +96,13 @@ of the Market tab, and the **Test run** button appears in the nav.
 - **Prizes:** keep entry free. Paid entry for cash prizes can fall under gambling or sweepstakes laws.
 
 ## Daily data
-Tournament results, PR and Div Cup price moves are updated by the "Storm Exchange live stats refresh"
-scheduled task in the Claude app. Once this site is live, it needs to write to Supabase instead of the old
-claude.ai page: ask Claude to "switch the refresh job to Supabase".
+The "Storm Exchange live stats refresh" scheduled task in the Claude app (hourly on event days, daily
+otherwise) runs the scripts in `tools/`:
+- **Tournament results** from Osirion → `players.form`
+- **Storm Rating**: our own player rating, calculated from those results (`build.py rating`, settings in
+  `data/storm_rating_params.json`). It replaced Fortnite Tracker PR, which doesn't allow its data to be used;
+  no Fortnite Tracker data is collected or stored.
+- **Tournament price moves** (Div Cup Finals, FNCS Solo Qualifier rounds) → `shocks`, applied to prices by the database
+- **Discord roles** (`discord_roles.py`)
+
+`tools/supabase_sync.py` reads the service-role key from `%USERPROFILE%\.stormex\supabase.env`, never from the repo.

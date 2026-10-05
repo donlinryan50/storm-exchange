@@ -46,21 +46,18 @@ def main():
     players = []
     for f in sorted(glob.glob(os.path.join(EXP, "players", "*.json"))):
         pid = os.path.basename(f)[:-5]; d = load(f)
-        players.append({"id": pid, "name": d["name"], "region": d["region"], "pr": int(d.get("pr") or 0),
+        # no rating fields: Fortnite Tracker PR must not be re-uploaded; the refresh job's Storm Rating fills players.pr
+        players.append({"id": pid, "name": d["name"], "region": d["region"],
                         "open": int(d["open"]), "note": d.get("note") or None, "listed": (d.get("listed") or "2026-10-04")[:10],
-                        "epic": epic.get(pid), "pr_history": d.get("prHistory") or [],
-                        "form": form.get(pid) or d.get("form"), "active": True})
+                        "epic": epic.get(pid), "form": form.get(pid) or d.get("form"), "active": True})
     s = load(os.path.join(EXP, "meta", "season.json"))
     season = {"n": s["n"], "name": s["name"], "start_at": s["start"], "end_at": s["end"],
               "depth": s.get("depth") or 250000, "ipo": s.get("ipo") or {}, "past": s.get("past") or []}
-    snaps = [{"id": os.path.basename(f)[:-5], **{k: load(f)[k] for k in ("at", "pr", "note")}}
-             for f in glob.glob(os.path.join(EXP, "prsnaps", "*.json"))]
     events = load(os.path.join(EXP, "meta", "events.json"))
     sim = load(os.path.join(EXP, "meta", "simskill.json"))
     print("Uploading to", URL)
     upsert("players", players, "id")
     upsert("seasons", [season], "n")
-    upsert("prsnaps", snaps, "id")
     upsert("site_meta", [{"key": "events", "value": events},
                          {"key": "simskill", "value": sim},
                          {"key": "stats", "value": {"at": stats_at}}], "key")

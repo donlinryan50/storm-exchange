@@ -46,7 +46,7 @@ const dtLabel = ms => { const d=new Date(ms); return dLabel(ms)+" "+d.toLocaleTi
    Impact is measured in gold bars, not shares, so every player moves the same amount for the same money:
    the price rises by a factor of e for every DEPTH bars bought (≈1% per 2,500 bars).
    In shares that works out to price = IPO / (1 − N·IPO/DEPTH), where N = long shares − short shares across everyone.
-   PR never touches the price. */
+   The Storm Rating never touches the price. */
 const priceAt = (p, N, m = p.m ?? 1) => m * p.open / Math.max(1e-6, 1 - N*p.open/depthNow());
 const fill = (p, N, n, m = p.m ?? 1) => { const D = depthNow(), a = p.open/D, hi = 1 - (N+n)*a;   // bars to move net shares from N to N+n
   return hi <= 0 ? Infinity : m * D * Math.log((1 - N*a) / hi); };
@@ -90,13 +90,13 @@ function derive(){
       for(const [pid,pos] of Object.entries(pf.pos||{})) net[pid] = (net[pid]||0) + (pos.side==="long" ? pos.sh : -pos.sh);
   } else for(const [pid, m] of Object.entries(S.market)) net[pid] = m.net;   // live: the server's market table
   S.net = net;
-  for(const p of S.players){   // each season re-IPOs every player at their PR ÷ 100 from the season start
+  for(const p of S.players){   // each season re-IPOs every player at their Storm Rating ÷ 100 from the season start
     if(p.base === undefined) p.base = p.open;
     p.open = (curSeason && curSeason.ipo && curSeason.ipo[p.id]) || p.base;
     p.m = SIM.on ? multAt(p.id, Date.now()) : (S.market[p.id]?.mult ?? 1);
     p.price = priceAt(p, net[p.id]||0);
   }
-  // latest tournament stats and PR snapshots written by the refresh task override what's stored on player docs
+  // latest tournament stats and Storm Rating snapshots written by the refresh task override what's stored on player docs
   const snaps = S.prSnaps || [];
   for(const p of S.players){
     if(!SIM.on || p._realForm === undefined) p._realForm = p.form;
@@ -110,14 +110,14 @@ function derive(){
     if(latest != null) p.pr = latest;
     if(note) p.note = note;
   }
-  // tiers by PR rank within each region: T1 top 30, T2 top 100, T3 the rest
+  // tiers by Storm Rating rank within each region: T1 top 30, T2 top 100, T3 the rest
   const byRegion = {};
   for(const p of S.players) (byRegion[p.region] = byRegion[p.region] || []).push(p);
   S.tierOf = {};
   for(const list of Object.values(byRegion)) list.sort((a,b)=>(b.pr||0)-(a.pr||0)).forEach((p,i)=>{ S.tierOf[p.id] = i<30 ? 1 : i<100 ? 2 : 3; });
   formTiers();
 }
-/* Form tiers: on top of the PR tier, recent Div Cup Finals can move a pro one tier.
+/* Form tiers: on top of the rating tier, recent Div Cup Finals can move a pro one tier.
    Down: a bad result (missed the Final or placed in the down band) in all of the region's last 4 Finals (T1→T2, T2→T3).
    Up: an up-band finish in 3 of the last 4 (T3→T2, T2→T1). Weeks a pro sat out don't count against them.
    Same rule as build.py's form_tiers, and tested against simulated seasons for heatmap balance. */
@@ -138,7 +138,7 @@ function formTiers(){
 function tierArrow(id){ const m = S.tierMove && S.tierMove[id]; return m ? (S.tierOf[id] > m.from ? "↓" : "↑") : ""; }
 function tierTitle(p){
   const t = S.tierOf[p.id], m = S.tierMove && S.tierMove[p.id];
-  return m ? `Tier ${t} in ${p.region}: moved ${t > m.from ? "down" : "up"} from Tier ${m.from} after ${m.why}` : `Tier ${t} in ${p.region} by PR`;
+  return m ? `Tier ${t} in ${p.region}: moved ${t > m.from ? "down" : "up"} from Tier ${m.from} after ${m.why}` : `Tier ${t} in ${p.region} by Storm Rating`;
 }
 const dir = a => (a==="buy"||a==="cover") ? 1 : -1;
 const dayMs = t => /^\d{4}-\d{2}-\d{2}$/.test(t) ? Date.parse(t+"T00:00:00") : Date.parse(t);
@@ -488,7 +488,8 @@ async function submitAuth(){
   } finally { if(go && document.body.contains(go)) go.disabled = false; render(); }
 }
 async function linkDiscord(){
-  const {error} = await sb.auth.linkIdentity({provider:"discord", options:{redirectTo:location.origin + location.pathname + "?linked=discord"}});
+  // guilds.join lets our server function add them to the Storm Exchange Discord right after linking
+  const {error} = await sb.auth.linkIdentity({provider:"discord", options:{scopes:"identify email guilds.join", redirectTo:location.origin + location.pathname + "?linked=discord"}});
   if(error){ const e = document.getElementById("lgErr"); if(e) e.textContent = niceErr(error); }
 }
 async function unlinkDiscord(){
@@ -498,9 +499,36 @@ async function unlinkDiscord(){
   await sb.rpc("sync_discord"); await loadProfile(); await refreshMarket(); derive(); render(); renderLogin(true); toast("Discord unlinked.");
 }
 
+function discordInvite(){
+  const u = (S.discord && S.discord.invite) || (S.dcWidget && S.dcWidget.instant_invite);
+  return u && /^https:\/\/(?:discord\.gg|discord\.com\/invite)\/[A-Za-z0-9-]{2,32}$/.test(u) ? u : "";
+}
 function discordBtn(){
-  const u = S.discord && S.discord.invite;
-  return u && DC_INVITE_RE.test(u) ? `<a class="btn dcbtn" href="${esc(u)}" target="_blank" rel="noopener noreferrer">Join our Discord</a>` : "";
+  const u = discordInvite(), w = S.dcWidget;
+  if(!u) return "";
+  const online = w && Number.isFinite(w.presence_count) ? `<span class="dc-online"><i></i>${fmt(w.presence_count)} online</span>` : "";
+  return `<a class="btn dcbtn" href="${esc(u)}" target="_blank" rel="noopener noreferrer">Join our Discord${online}</a>`;
+}
+// Live server info from Discord's public widget feed (Server Settings -> Widget must be enabled).
+async function loadDiscordWidget(){
+  const id = S.discord && S.discord.guild_id;
+  if(!id || !/^\d{17,20}$/.test(id)) return;
+  try{
+    const r = await fetch(`https://discord.com/api/guilds/${id}/widget.json`);
+    if(!r.ok) return;
+    const w = await r.json();
+    S.dcWidget = {name:String(w.name || ""), presence_count:Number(w.presence_count), instant_invite:w.instant_invite || ""};
+    renderSeason(); renderDcCard();
+  }catch(e){}
+}
+function renderDcCard(){
+  const el = document.getElementById("dcCard"); if(!el) return;
+  const u = discordInvite(), w = S.dcWidget;
+  el.hidden = !u;
+  if(!u) return;
+  el.innerHTML = `<div><span class="label">Community</span><h3>${esc(w?.name || "Storm Exchange Discord")}</h3>
+    <p>${w && Number.isFinite(w.presence_count) ? `<b class="dc-online"><i></i>${fmt(w.presence_count)} online now</b> · ` : ""}Talk picks, call the next breakout, and claim season prizes. Link Discord on your account and you're added automatically.</p></div>
+    <a class="btn dcbtn" href="${esc(u)}" target="_blank" rel="noopener noreferrer">Join the server</a>`;
 }
 function renderSeason(){
   const s = curSeason, over = seasonOver(), btn = discordBtn();
@@ -538,7 +566,7 @@ function marketHTML(){
     const mine = S.me.pos[p.id];
     return `<div class="row player" data-row="${esc(p.id)}">
       <span class="rank">${i+1}</span>
-      <span class="who"><span class="nline">${S.tierOf[p.id]?`<span class="tier mini t${S.tierOf[p.id]}" title="${esc(tierTitle(p))}">T${S.tierOf[p.id]}${tierArrow(p.id)}</span>`:""}<button class="pname n" data-open="${esc(p.id)}" title="Show ${esc(p.name)}'s chart">${esc(p.name)}</button>${mine?`<span class="mine ${mine.side}">${mine.side==="long"?"UP":"DOWN"} ×${mine.sh}</span>`:""}</span><span class="r">${esc(p.region)}${p.note?" · "+esc(p.note):""}${p.pr?" · PR "+fmt(p.pr):""}</span></span>
+      <span class="who"><span class="nline">${S.tierOf[p.id]?`<span class="tier mini t${S.tierOf[p.id]}" title="${esc(tierTitle(p))}">T${S.tierOf[p.id]}${tierArrow(p.id)}</span>`:""}<button class="pname n" data-open="${esc(p.id)}" title="Show ${esc(p.name)}'s chart">${esc(p.name)}</button>${mine?`<span class="mine ${mine.side}">${mine.side==="long"?"UP":"DOWN"} ×${mine.sh}</span>`:""}</span><span class="r">${esc(p.region)}${p.note?" · "+esc(p.note):""}${p.pr?" · Rating "+fmt(p.pr):""}</span></span>
       <span class="price">${fmt(p.price)}</span>
       <span class="chg ${cls(c)}">${pct(c)}</span>
       <span class="sp">${spark(marketSeries(p),110,30,tone(c))}</span>
@@ -549,10 +577,10 @@ function marketHTML(){
   return `<div class="tools">
       ${regions.map(r=>`<button class="chip" data-region="${esc(r)}" aria-pressed="${r===S.region}">${esc(r)}</button>`).join("")}
       <span class="chip-sep" aria-hidden="true"></span>
-      ${[[0,"All tiers"],[1,"T1"],[2,"T2"],[3,"T3"]].map(([t,l])=>`<button class="chip tchip${t?" tc"+t:""}" data-tierf="${t}" aria-pressed="${(S.tier||0)===t}" title="${["Every tier","Top 30 PR in region","PR rank 31–100","PR rank 101+"][t]}">${l}</button>`).join("")}
+      ${[[0,"All tiers"],[1,"T1"],[2,"T2"],[3,"T3"]].map(([t,l])=>`<button class="chip tchip${t?" tc"+t:""}" data-tierf="${t}" aria-pressed="${(S.tier||0)===t}" title="${["Every tier","Top 30 Storm Rating in region","Rating rank 31–100","Rating rank 101+"][t]}">${l}</button>`).join("")}
       <input id="mkSearch" type="search" placeholder="Search player or team" aria-label="Search players" value="${esc(S.q||"")}">
       <select id="sortSel" aria-label="Sort players">
-        ${[["price","Highest market value"],["pr","Highest PR"],["gain","Biggest gainers"],["loss","Biggest fallers"],["bulls","Crowd favorites"],["name","Name A–Z"]].map(([k,l])=>`<option value="${k}" ${S.sort===k?"selected":""}>${l}</option>`).join("")}
+        ${[["price","Highest market value"],["pr","Highest rating"],["gain","Biggest gainers"],["loss","Biggest fallers"],["bulls","Crowd favorites"],["name","Name A–Z"]].map(([k,l])=>`<option value="${k}" ${S.sort===k?"selected":""}>${l}</option>`).join("")}
       </select>
     </div>
     <div class="board">
@@ -562,8 +590,8 @@ function marketHTML(){
     <div class="how">
       <div><b>Live prices</b>Every <span class="impact">2,500</span> gold bars bought moves a player's price up about 1%, and selling or shorting moves it down. Cheap or expensive, every pro moves the same for the same money.</div>
       <div><b>Bet up or down</b>Bet up and you profit when others buy after you. Bet down and you profit when others sell after you.</div>
-      <div><b>PR is separate</b>PR from Fortnite Tracker refreshes daily so you can judge a player's form. It never moves the price.</div>
-      <div><b>Big events</b>The market runs all year, but prices swing hardest around FNCS, Victory Cash Cups and Performance Evaluations, when results and PR change fast.</div>
+      <div><b>Rating is separate</b>The Storm Rating scores every pro from their tournament results over the past year and updates daily, so you can judge form. It never moves the price.</div>
+      <div><b>Big events</b>The market runs all year, but prices swing hardest around FNCS, Victory Cash Cups and Performance Evaluations, when results and ratings change fast.</div>
     </div>
     ${adminHTML()}`;
 }
@@ -574,10 +602,10 @@ function adminHTML(){
     <form id="addForm">
       <div class="field"><label class="label" for="addName">Name</label><input id="addName" required maxlength="24"></div>
       <div class="field"><label class="label" for="addRegion">Region</label><select id="addRegion">${["NA","EU","BR","OCE","ASIA","ME"].map(r=>`<option>${r}</option>`).join("")}</select></div>
-      <div class="field"><label class="label" for="addPrice">PR rating</label><input id="addPrice" type="number" min="100" max="1000000" required></div>
+      <div class="field"><label class="label" for="addPrice">Storm Rating</label><input id="addPrice" type="number" min="100" max="1000000" required></div>
       <button class="btn gold" type="submit">List player</button>
     </form>
-    <p class="label" style="margin:10px 0 0;text-transform:none;letter-spacing:0">Only admins see this. A new player's IPO price is their PR ÷ 100. After that, trading sets the price.</p>
+    <p class="label" style="margin:10px 0 0;text-transform:none;letter-spacing:0">Only admins see this. A new player's IPO price is their Storm Rating ÷ 100. After that, trading sets the price.</p>
     <h3>Season and Discord</h3>
     <form id="seasonForm">
       <div class="field"><label class="label" for="seasonEnd">${curSeason ? esc(curSeason.name)+" ends" : "Season end"}</label><input id="seasonEnd" type="datetime-local" value="${curSeason ? toLocalInput(curSeason.end) : ""}" ${curSeason ? "" : "disabled"}></div>
@@ -585,10 +613,11 @@ function adminHTML(){
     </form>
     <form id="discordForm">
       <div class="field"><label class="label" for="dcInvite">Discord invite link</label><input id="dcInvite" placeholder="https://discord.gg/yourserver" value="${esc(S.discord?.invite||"")}"></div>
+      <div class="field"><label class="label" for="dcGuild">Discord server ID</label><input id="dcGuild" inputmode="numeric" maxlength="20" placeholder="e.g. 1234567890123456789" value="${esc(S.discord?.guild_id||"")}"></div>
       <div class="field"><label class="label" for="dcClaims">Prize claims channel</label><input id="dcClaims" maxlength="32" placeholder="#prize-claims" value="${esc(S.discord?.claims||"")}"></div>
       <button class="btn gold" type="submit">Save Discord</button>
     </form>
-    <p class="label" style="margin:10px 0 0;text-transform:none;letter-spacing:0">To end a season and start the next, ask Claude to roll it over. That saves the top Discord-linked finishers as past champions, re-IPOs every player at their current PR and resets everyone to ${fmt(START_CASH)} gold bars.</p></div>`;
+    <p class="label" style="margin:10px 0 0;text-transform:none;letter-spacing:0">To end a season and start the next, ask Claude to roll it over. That saves the top Discord-linked finishers as past champions, re-IPOs every player at their current Storm Rating and resets everyone to ${fmt(START_CASH)} gold bars.</p></div>`;
 }
 function toLocalInput(iso){ const d = new Date(iso); return new Date(d - d.getTimezoneOffset()*6e4).toISOString().slice(0,16); }
 
@@ -794,10 +823,10 @@ function renderTicket(){
 
     ${shockHTML(p)}
     ${prPts.length ? `<div class="t-sec pr">
-      <div class="t-top"><div><span class="label">PR rating · Fortnite Tracker</span>
+      <div class="t-top"><div><span class="label">Storm Rating</span>
         <div class="t-price small"><b>${fmt(p.pr)}</b><span class="num ${cls(prChg)}">${pct(prChg)} since listing</span></div></div></div>
-      ${chart("pr", prPts, {fmtY:v=>v>=1000?Math.round(v/1000)+"k":fmt(v), color:cssVar("--gold"), h:140, label:p.name+" PR chart"})}
-      <p class="t-note">PR refreshes daily and doesn't move the market value.</p>
+      ${chart("pr", prPts, {fmtY:v=>v>=1000?Math.round(v/1000)+"k":fmt(v), color:cssVar("--gold"), h:140, label:p.name+" Storm Rating chart"})}
+      <p class="t-note">Calculated daily from FNCS, Div Cup, Victory Cup and Performance Evaluation results over the past year. It doesn't move the market value.</p>
     </div>` : ""}
 
     ${formHTML(p)}
@@ -823,14 +852,14 @@ function renderTicket(){
   const tk = root.querySelector(".ticket"); if(tk) tk.scrollTop = scroll;
 }
 
-/* ---------- recent PR tournaments (from Osirion) ---------- */
+/* ---------- recent tournaments (from Osirion) ---------- */
 const medal = n => n===1 ? " m1" : n===2 ? " m2" : n===3 ? " m3" : "";
 const ord = n => n + (n%100>=11&&n%100<=13 ? "th" : ({1:"st",2:"nd",3:"rd"}[n%10]||"th"));
 function shockHTML(p){
   const list = seasonShocks().filter(s=>s.pid===p.id).sort((a,b)=>b.ts-a.ts);
   if(!list.length) return "";
   const mv = S.tierMove && S.tierMove[p.id];
-  return `<div class="t-sec"><span class="label">Div Cup price moves this season</span>${mv ? `<p class="t-note tmv-note"><b class="${S.tierOf[p.id] > mv.from ? "down" : "up"}">${S.tierOf[p.id] > mv.from ? "↓ Moved down" : "↑ Moved up"} to Tier ${S.tierOf[p.id]}</b> from Tier ${mv.from} after ${esc(mv.why)}. Their Div Cup percentages now follow Tier ${S.tierOf[p.id]}.</p>` : ""}<ul class="shocks">${list.map(s=>
+  return `<div class="t-sec"><span class="label">Tournament price moves this season</span>${mv ? `<p class="t-note tmv-note"><b class="${S.tierOf[p.id] > mv.from ? "down" : "up"}">${S.tierOf[p.id] > mv.from ? "↓ Moved down" : "↑ Moved up"} to Tier ${S.tierOf[p.id]}</b> from Tier ${mv.from} after ${esc(mv.why)}. Their Div Cup percentages now follow Tier ${S.tierOf[p.id]}.</p>` : ""}<ul class="shocks">${list.map(s=>
     `<li><b class="num ${s.f>1?"up":"down"}">${pct(s.f-1)}</b><span>${esc(s.why)}</span><span class="label">${dLabel(s.ts)}</span></li>`).join("")}</ul></div>`;
 }
 function formHTML(p){
@@ -838,7 +867,7 @@ function formHTML(p){
   const ev = f.ev || [];
   const upd = S.statsAt ? dtLabel(Date.parse(S.statsAt)) : f.updated ? dLabel(dayMs(f.updated)) : "";
   const home = p.region==="NA" ? "NAC" : p.region;
-  if(!ev.length) return `<div class="t-sec form"><span class="label">Recent PR tournaments</span>
+  if(!ev.length) return `<div class="t-sec form"><span class="label">Recent tournaments</span>
     <p class="t-note">No top-1,000 finishes in this season's FNCS, Solo Victory Cash Cups or Performance Evaluations yet.</p>
     <p class="t-note src">Source: Osirion · updated ${esc(upd)}</p></div>`;
   const best = Math.min(...ev.map(e=>e.rk));
@@ -857,7 +886,7 @@ function formHTML(p){
       ${open ? `<tr class="detail"><td colspan="7">${matchesHTML(e)}</td></tr>` : ""}`;
   }).join("");
   return `<div class="t-sec form">
-    <span class="label">Recent PR tournaments · this season</span>
+    <span class="label">Recent tournaments</span>
     <div class="ftiles">
       <div><b>${ev.length}</b><span>events</span></div>
       <div><b>${ord(best)}</b><span>best finish</span></div>
@@ -979,8 +1008,11 @@ document.addEventListener("submit", e=>{
   if(e.target.id==="discordForm"){
     e.preventDefault();
     const invite = document.getElementById("dcInvite").value.trim(), claims = document.getElementById("dcClaims").value.trim().slice(0,32);
+    const guild_id = document.getElementById("dcGuild").value.trim();
     if(invite && !DC_INVITE_RE.test(invite)) return toast("Use an invite link like https://discord.gg/yourserver");
-    sb.rpc("admin_set_meta", {p_key:"discord", p_value:{invite, claims}}).then(({error})=>{ if(error) return toast(niceErr(error)); S.discord = {invite, claims}; render(); toast("Discord settings saved."); });
+    if(guild_id && !/^\d{17,20}$/.test(guild_id)) return toast("The server ID is a 17–20 digit number (right-click your server → Copy Server ID).");
+    const value = {invite, claims, guild_id};
+    sb.rpc("admin_set_meta", {p_key:"discord", p_value:value}).then(({error})=>{ if(error) return toast(niceErr(error)); S.discord = value; render(); loadDiscordWidget(); toast("Discord settings saved."); });
     return;
   }
   if(e.target.id!=="addForm") return; e.preventDefault();
@@ -1002,7 +1034,7 @@ function toast(msg){
 }
 
 /* ---------- heatmap: one treemap per region and tier, tile area grows with gains, color = change ---------- */
-const HEAT = {ipo:"Market value since IPO", "1d":"Market value, past 24h", pr7:"PR, past 7 days"};
+const HEAT = {ipo:"Market value since IPO", "1d":"Market value, past 24h", pr7:"Rating, past 7 days"};
 function heatChange(p){
   if(S.heat==="1d"){ const s = clip(marketSeries(p), "1d"); return s[s.length-1].y/s[0].y - 1; }
   if(S.heat==="pr7"){ const h = prSeries(p); if(!h.length) return 0; const cut = Date.now()-7*864e5;
@@ -1027,7 +1059,7 @@ function heatHTML(){
     ${groups.map(([r,label])=>{ const ps = S.players.filter(p=>p.region===r).sort((a,b)=>(b.pr||0)-(a.pr||0)); if(!ps.length) return "";
       const summary = list=>{ const cs = list.map(heatChange), up = cs.filter(c=>c>.0005).length, dn = cs.filter(c=>c<-.0005).length, avg = cs.reduce((a,b)=>a+b,0)/cs.length;
         return `${list.length} pros · <b class="t-up">${up} up</b> · <b class="t-down">${dn} down</b> · avg <b class="${cls(avg)==="flat"?"":"t-"+cls(avg)}">${pct(avg)}</b>`; };
-      const tiers = [[1,"Top 30 PR"],[2,"PR rank 31–100"],[3,"PR rank 101+"]].map(([t,sub])=>{ const list = ps.filter(p=>S.tierOf[p.id]===t); if(!list.length) return "";
+      const tiers = [[1,"Top 30 rating"],[2,"Rating rank 31–100"],[3,"Rating rank 101+"]].map(([t,sub])=>{ const list = ps.filter(p=>S.tierOf[p.id]===t); if(!list.length) return "";
         return `<div class="hm-tier"><div class="hm-thead"><span class="tier t${t}">T${t}</span><span class="tsub">${sub}</span><span class="tsum">${summary(list)}</span></div>
           <div class="hm-map" data-region="${esc(r)}" data-tier="${t}" style="height:0"></div></div>`; }).join("");
       return `<section class="hm-sec"><div class="hm-head"><h3>${esc(label)}</h3><span>${summary(ps)}</span></div>${tiers}</section>`; }).join("")}`;
@@ -1085,6 +1117,7 @@ function homeHTML(){
       <div class="hstats"><div><b id="hmPlayers">—</b><span>pros listed</span></div><div><b id="hmTraders">—</b><span>traders</span></div><div><b id="hmTrades">—</b><span>trades made</span></div></div>
     </div>
   </section>
+  <section class="dc-card wrap" id="dcCard" hidden></section>
   <section class="ev-wrap" id="events">
     <div class="ev-head"><h3>Upcoming events</h3><span>Prices move fastest around these. Times shown in your time zone.</span></div>
     <div class="tools" id="evChips"></div>
@@ -1102,10 +1135,10 @@ function homeHTML(){
         <p>Think a pro is about to pop off? Bet up. Think they're overhyped? Bet down. You hold one side per player at a time.</p></div>
       <div class="step"><span class="no">3</span><h4>The crowd sets the price</h4>
         <div class="demo d-price"><div><b id="dmPx">2,000</b><span class="act" id="dmAct">Market open</span></div><div id="dmSpark"></div></div>
-        <p>Every <span class="impact">2,500</span> gold bars bought pushes a player up about 1%, and selling or shorting pulls them down. Get in early on the right pro and the crowd pays you. Div Cup Finals move prices too. Tier 1: top 5 +3.5%, 11th or worse −2.5%. Tier 2: top 15 +10%, 31st or worse −0.5%. Tier 3: top 20 +10%. Playing the week's Division 1 session but missing the Final costs 5% (T1), 1.25% (T2) or 0.35% (T3). Form moves tiers too: a bad result in each of the last 4 Finals drops a pro a tier, and an up finish in 3 of the last 4 lifts them one.</p></div>
+        <p>Every <span class="impact">2,500</span> gold bars bought pushes a player up about 1%, and selling or shorting pulls them down. Get in early on the right pro and the crowd pays you. Div Cup Finals move prices too. Tier 1: top 5 +3.5%, 11th or worse −2.5%. Tier 2: top 15 +10%, 31st or worse −0.5%. Tier 3: top 20 +10%. Playing the week's Division 1 session but missing the Final costs 5% (T1), 1.25% (T2) or 0.35% (T3). Form moves tiers too: a bad result in each of the last 4 Finals drops a pro a tier, and an up finish in 3 of the last 4 lifts them one. FNCS Solo Qualifier rounds count as well: within each tier, the top third of pros who played go up (T1 +3%, T2 +4%, T3 +5%) and the bottom third go down by the same amount.</p></div>
       <div class="step"><span class="no">4</span><h4>Scout their form</h4>
         <div class="demo d-form" aria-hidden="true">${dots.map(([n,k],i)=>`<i class="${k}" style="--i:${i}"><b class="${medal(n).trim()}">${k==="w"?"W":n}</b></i>`).join("")}</div>
-        <p>Click any player for their market chart, Fortnite Tracker PR, and game-by-game results from FNCS, Victory Cash Cups and Performance Evaluations.</p></div>
+        <p>Click any player for their market chart, Storm Rating, and game-by-game results from FNCS, Victory Cash Cups and Performance Evaluations.</p></div>
       <div class="step"><span class="no">5</span><h4>Climb the leaderboard</h4>
         <div class="demo" aria-hidden="true"><div class="lbd"><div class="r1"><span>Rival A</span><b>31,400</b></div><div class="r2"><span>Rival B</span><b>29,950</b></div><div class="you"><span>You</span><b>33,120</b></div></div></div>
         <p>Your net worth updates live as prices move. Sell into the hype after a big event or hold for the next one. The top traders when the season ends win prizes, claimed in our Discord, and then everyone restarts at 25,000.</p></div>
@@ -1116,7 +1149,7 @@ function homeHTML(){
 function renderHome(){
   const root = document.getElementById("homeRoot");
   if(!root.dataset.built){ root.innerHTML = homeHTML(); root.dataset.built = "1"; startDemos(); }
-  startArena(); updateHomeLive();
+  startArena(); updateHomeLive(); renderDcCard();
 }
 function updateTicker(){
   const t = document.getElementById("ticker");
@@ -1284,8 +1317,8 @@ const SIM_W1 = ["Storm","Crank","Loot","Zone","Box","Edit","Cracked","Tilted","S
 const SIM_W2 = ["King","Goblin","Wizard","Gremlin","Diff","Merchant","Enjoyer","Demon","Farmer","Hawk","Shark","Bandit","Rat","Legend"];
 const pick = a => a.length ? a[Math.random()*a.length|0] : undefined;
 const gauss = () => Math.sqrt(-2*Math.log(1-Math.random())) * Math.cos(2*Math.PI*Math.random());
-// skill: 90% a pro's real Division 1 Final record over the past year, 10% PR (meta/simskill, fitted offline).
-// Pros without a fitted value fall back to PR alone. Upsets still happen through the per-round noise.
+// skill: 90% a pro's real Division 1 Final record over the past year, 10% rating (meta/simskill, fitted offline).
+// Pros without a fitted value fall back to their rating alone. Upsets still happen through the per-round noise.
 const skill = p => SIM.skill && SIM.skill[p.id] != null ? SIM.skill[p.id] : (Math.log(Math.max(1000, p.pr||1000)) - 11.5) * .3;
 
 function simStart(n){
@@ -1366,8 +1399,8 @@ function botAct(pf){
   const n = Math.min(MAX_ORDER, Math.floor(pf.cash*(.04 + Math.random()*.12) / p.price));
   if(n >= 1) simTrade(pf, side==="long" ? "buy" : "short", p.id, n);
 }
-// Popularity (0–1, meta/simskill.pop): PR, past-year Finals record, team, plus a fame boost for the biggest names.
-// Picks a pro with weight e^(k·popularity), so a superstar draws ~e^k times the bets of an unknown. Fallback: PR tier.
+// Popularity (0–1, meta/simskill.pop): rating, past-year Finals record, team, plus a fame boost for the biggest names.
+// Picks a pro with weight e^(k·popularity), so a superstar draws ~e^k times the bets of an unknown. Fallback: rating tier.
 function popPick(k){
   if(!SIM.pop) return k > 3 ? pick(S.players.filter(x=>S.tierOf[x.id]===1)) : pick(S.players);
   const key = k + ":" + S.players.length;
@@ -1402,7 +1435,7 @@ function simTrade(pf, action, pid, n){   // the same rules as a real trade, appl
   SIM.trades++;
 }
 
-function simEv(p, name, rk, reg){   // a mock result row for the player's "Recent PR tournaments" list
+function simEv(p, name, rk, reg){   // a mock result row for the player's "Recent tournaments" list
   const games = Array.from({length:6}, ()=>{
     const pl = Math.min(100, Math.max(1, Math.round(Math.exp(Math.random()*Math.log(100)) * (.35 + rk/120))));
     return [pl, Math.round(Math.random()*(pl <= 10 ? 7 : 3)), 300 + Math.round(Math.random()*1200), pl===1 ? 1 : 0];
@@ -1505,6 +1538,7 @@ async function loadAll(){
   curSeason = r ? {n:r.n, name:r.name, start:r.start_at, end:r.end_at, depth:Number(r.depth), ipo:r.ipo || {}, past:r.past || []} : null;
   const m = Object.fromEntries((meta.data || []).map(x=>[x.key, x.value]));
   S.events = m.events?.events || []; S.discord = m.discord || null; S.simskill = m.simskill || null; S.statsAt = m.stats?.at || null;
+  loadDiscordWidget();
   S.prSnaps = (snaps.data || []).map(x=>({at:x.at, pr:x.pr, note:x.note})).sort((a,b)=>a.at.localeCompare(b.at));
   await refreshMarket();
   renderEvents();
@@ -1581,7 +1615,17 @@ async function boot(){
     history.replaceState(null, "", location.pathname);
     const {error} = await sb.rpc("sync_discord");
     await loadProfile(); await refreshMarket();
-    toast(error ? niceErr(error) : "Discord linked. You're eligible for season prizes.");
+    if(error) toast(niceErr(error));
+    else {
+      let joined = "";
+      const token = (await sb.auth.getSession()).data.session?.provider_token;
+      if(token && S.discord?.guild_id){
+        const r = await sb.functions.invoke("discord-join", {body:{access_token:token}});
+        if(r.data?.joined) joined = " You've been added to the Storm Exchange Discord.";
+        else if(r.data?.alreadyMember) joined = " You're verified in the Storm Exchange Discord.";
+      }
+      toast("Discord linked. You're eligible for season prizes." + joined);
+    }
   }
   derive(); render();
 }

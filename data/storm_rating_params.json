@@ -1,0 +1,31 @@
+{
+ "W": {
+  "divfinal": 10,
+  "div1": 0.6,
+  "div23": 0.3,
+  "vc": 0.6,
+  "pe": 0.4,
+  "fncs1": 1.0,
+  "fncs2": 1.75,
+  "fncs3": 2.5,
+  "fncsx": 2.5,
+  "fncsgf": 10
+ },
+ "expo": 1.0,
+ "half": 365,
+ "field": {
+  "divfinal": 50,
+  "div1": 700,
+  "div23": 1000,
+  "fncs1": 1000,
+  "fncs2": 1000,
+  "fncs3": 1000,
+  "fncsx": 1000,
+  "vc": 1000,
+  "pe": 500,
+  "fncsgf": 100
+ },
+ "scale": 28302.85,
+ "note": "Storm Rating: sum over results of weight[kind] * (1 - ln(rank)/ln(field+1))^expo * 0.5^(age_days/half), then scale * value^gamma. Fitted 2026-10-05 against Fortnite Tracker PR (rank corr 0.889, 85% same tier); no Fortnite Tracker data is used to compute it.",
+ "gamma": 0.4347
+}

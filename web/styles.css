@@ -434,3 +434,14 @@ body.sim .wrap,body.sim #homeRoot{padding-bottom:230px}
 .shocks li{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
 .shocks b{font-family:var(--f-display);font-weight:400;font-size:18px;min-width:5ch}
 .lg-pfp .lg-skip{margin:0}
+
+/* Discord community card + online count */
+.dc-card{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px 24px;margin-top:28px;background:#5865f2;border:3px solid #3b45c4;padding:18px 20px;box-shadow:0 8px 0 rgba(4,33,90,.35)}
+.dc-card[hidden]{display:none}
+.dc-card h3{font-family:var(--f-display);font-weight:400;font-size:28px;margin:2px 0 4px;text-transform:uppercase}
+.dc-card p{margin:0;max-width:62ch;font-weight:500}
+.dc-card .label{color:#dfe3ff}
+.dc-card .dcbtn{background:#fff;color:#2b33a8;border-color:#fff;font-size:18px;padding:10px 18px}
+.dc-online{display:inline-flex;align-items:center;gap:6px;margin-left:10px;font-family:var(--f-body);font-size:13px;text-transform:none;letter-spacing:0}
+.dc-online i{width:8px;height:8px;border-radius:50%;background:#3ba55d;box-shadow:0 0 0 2px rgba(255,255,255,.6)}
+.dc-card .dc-online{margin-left:0}

@@ -8,3 +8,6 @@ migration/artifact-export/
 .DS_Store
 Thumbs.db
 __pycache__/
+
+# raw tournament history used by the rating job (third-party results; stays on this PC)
+data/div1_finals_history.txt
