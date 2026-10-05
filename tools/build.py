@@ -312,9 +312,10 @@ def final_factor(t, rk):
     if t == 2: return 1.10 if rk <= 15 else None if rk <= 30 else 0.995
     return 1.10 if rk <= 20 else None
 SHOCK_MISS = {1: 0.95, 2: 0.9875, 3: 0.9965}    # played that week's Division 1 session but missed the Final, by tier
-# FNCS Solo Qualifier rounds: within each tier and region, the top third of the pros who played move up and the
-# bottom third move down by the mirror-image amount (x(1+u) vs x1/(1+u)), so every round adds as much green as red
-# and the heatmaps stay balanced. Solo moves don't count toward form-tier promotions/demotions (Div Cups only).
+# FNCS Solo Qualifier rounds: within each tier and region, every pro who played moves by placement: the best gets
+# x(1+u), the worst x1/(1+u), and everyone between x(1+u)^s with s running evenly from +1 to -1, so every round adds
+# as much green as red and the heatmaps stay balanced. Players knocked out in an earlier round aren't moved.
+# Solo moves don't count toward form-tier promotions/demotions (Div Cups only).
 SOLO_STEP = {1: 0.03, 2: 0.04, 3: 0.05}
 
 def tiers(players, pr):
@@ -393,13 +394,13 @@ def shocks(prev_json, season_json, stats_dir, prsnap_json, players_dir, out):
             for pid, e in ev.get(w, {}).items():
                 if tier.get(pid): byt.setdefault(tier[pid], []).append((e.get("rk", 10**6), pid))
             for t, lst in byt.items():
-                lst.sort(); k = len(lst) // 3; u = SOLO_STEP[t]
+                lst.sort(); n = len(lst); u = SOLO_STEP[t]
                 for i, (rk, pid) in enumerate(lst):
-                    if i < k: f = 1 + u
-                    elif i >= len(lst) - k: f = 1 / (1 + u)
-                    else: continue
-                    added.append({"pid": pid, "ts": ts, "f": round(f, 6), "w": w, "r": r, "k": None,
-                                  "why": f"#{rk} in FNCS Solos {wk} ({'top' if f > 1 else 'bottom'} third of Tier {t})"})
+                    sc = 1 - 2 * i / (n - 1) if n > 1 else 0   # placement within the tier: +1 best ... -1 worst
+                    f = round((1 + u) ** sc, 6)
+                    if f == 1: continue
+                    added.append({"pid": pid, "ts": ts, "f": f, "w": w, "r": r, "k": None,
+                                  "why": f"#{rk} in FNCS Solos {wk} ({i + 1} of {n} in Tier {t})"})
             prev["done"].append(w); continue
         finalists = ev.get(w, {})
         for pid, e in finalists.items():
