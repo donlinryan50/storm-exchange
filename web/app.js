@@ -566,7 +566,7 @@ function marketHTML(){
     const mine = S.me.pos[p.id];
     return `<div class="row player" data-row="${esc(p.id)}">
       <span class="rank">${i+1}</span>
-      <span class="who"><span class="nline">${S.tierOf[p.id]?`<span class="tier mini t${S.tierOf[p.id]}" title="${esc(tierTitle(p))}">T${S.tierOf[p.id]}${tierArrow(p.id)}</span>`:""}<button class="pname n" data-open="${esc(p.id)}" title="Show ${esc(p.name)}'s chart">${esc(p.name)}</button>${mine?`<span class="mine ${mine.side}">${mine.side==="long"?"UP":"DOWN"} ×${mine.sh}</span>`:""}</span><span class="r">${esc(p.region)}${p.note?" · "+esc(p.note):""}${p.pr?" · Rating "+fmt(p.pr):""}</span></span>
+      <span class="who"><span class="nline">${S.tierOf[p.id]?`<span class="tier mini t${S.tierOf[p.id]}" title="${esc(tierTitle(p))}">T${S.tierOf[p.id]}${tierArrow(p.id)}</span>`:""}<button class="pname n" data-open="${esc(p.id)}" title="Show ${esc(p.name)}'s chart">${esc(p.name)}</button>${mine?`<span class="mine ${mine.side}">${mine.side==="long"?"UP":"DOWN"} ×${mine.sh}</span>`:""}</span><span class="r">${esc(p.region)}${p.note?" · "+esc(p.note):""}${p.pr?" · SR "+fmt(p.pr):""}</span></span>
       <span class="price">${fmt(p.price)}</span>
       <span class="chg ${cls(c)}">${pct(c)}</span>
       <span class="sp">${spark(marketSeries(p),110,30,tone(c))}</span>
