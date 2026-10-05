@@ -15,7 +15,7 @@ Credentials come from the environment (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) 
 from %USERPROFILE%\\.stormex\\supabase.env (lines like KEY=value). The service-role key bypasses row-level
 security, so it must never be committed or printed; this script never prints it.
 """
-import datetime as dt, glob, json, os, sys, urllib.error, urllib.parse, urllib.request
+import datetime as dt, glob, json, os, re, sys, urllib.error, urllib.parse, urllib.request
 
 def creds():
     vals = {k: os.environ.get(k, "").strip() for k in ("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")}
@@ -116,6 +116,26 @@ def purge_fortnite_tracker(W):
     call("POST", "prsnaps?on_conflict=id", [{"id": sid, **snap}], "resolution=merge-duplicates,return=minimal")
     print(f"purged Fortnite Tracker PR; {len(snap['pr'])} players now on Storm Rating (snapshot {sid})")
 
+def window_name(w):
+    """S42_FNCSSoloQualifiers_Qual2Round1Day1_EU -> 'FNCS Solo Qualifier 2 Round 1 Day 1 (EU)'."""
+    reg = "EU" if w.endswith("_EU") else "NA"
+    for pat, fmt_ in ((r"FNCSSoloQualifiers_Qual(\d)Round(\d)(?:Day(\d))?", lambda m: f"FNCS Solo Qualifier {m[1]} Round {m[2]}" + (f" Day {m[3]}" if m[3] else "")),
+                      (r"FNCSDivisionalCup_Division(\d)_Week(\d)Final", lambda m: f"Division {m[1]} Cup Week {m[2]} Final"),
+                      (r"FNCSDivisionalCup_Division(\d)_Event(\d+)", lambda m: f"Division {m[1]} Cup {m[2]}"),
+                      (r"SoloVictoryCup_Event(\d+)Round(\d)", lambda m: f"Solo Victory Cup {m[1]}"),
+                      (r"PerformanceEvaluation_Event(\d+)Round(\d)", lambda m: f"Performance Evaluation {m[1]} Round {m[2]}"),
+                      (r"FNCSSolo_(\w+)_(?:EU|NAC)$", lambda m: "FNCS Solo " + re.sub(r"(?<=[a-z])(?=[A-Z0-9])|_", " ", m[1]))):
+        m = re.search(pat, w)
+        if m: return f"{fmt_(m)} ({reg})"
+    return w
+
+def closures(upcoming):
+    """Market hours for the site: each scheduled round closes trading on its region's players (see market_closed)."""
+    return {"windows": [{"w": u["w"], "name": window_name(u["w"]), "r": "EU" if u["w"].endswith("_EU") else "NA",
+                         "b": u["b"], "e": u["end"],
+                         "moves": bool(re.search(r"FNCSSoloQualifiers_Qual\dRound|Division1_Week\dFinal", u["w"]))}
+                        for u in upcoming if u.get("b") and u.get("end")]}
+
 def push_stats(W):
     prev = jload(os.path.join(W, "prev", "current.json"))["players"]
     new = {}
@@ -127,6 +147,7 @@ def push_stats(W):
     learned = os.path.join(W, "stats", "epicids.json")
     if os.path.exists(learned) and jload(learned):
         ids = meta("epicids") or {}; ids.update(jload(learned)); set_meta("epicids", ids)
+    set_meta("closures", closures(run.get("upcoming", [])))
     set_meta("stats", {"at": run["at"], "done": run["done"], "pending": run.get("pending", []), "upcoming": run.get("upcoming", [])})
     print(f"stats: {len(changed)} players updated, {len(run['done'])} finished windows, {len(run.get('pending', []))} still in progress")
 

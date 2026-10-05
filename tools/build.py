@@ -317,6 +317,8 @@ SHOCK_MISS = {1: 0.95, 2: 0.9875, 3: 0.9965}    # played that week's Division 1 
 # as much green as red and the heatmaps stay balanced. Players knocked out in an earlier round aren't moved.
 # Solo moves don't count toward form-tier promotions/demotions (Div Cups only).
 SOLO_STEP = {1: 0.03, 2: 0.04, 3: 0.05}
+# later rounds matter more: the step above is scaled by the round (Round 1 counts half, Round 2 three quarters)
+SOLO_ROUND_WEIGHT = {1: 0.5, 2: 0.75, 3: 1.0}
 
 def tiers(players, pr):
     """Same as the page: rank by latest PR within region; top 30 = T1, 31-100 = T2, rest = T3."""
@@ -394,7 +396,8 @@ def shocks(prev_json, season_json, stats_dir, prsnap_json, players_dir, out):
             for pid, e in ev.get(w, {}).items():
                 if tier.get(pid): byt.setdefault(tier[pid], []).append((e.get("rk", 10**6), pid))
             for t, lst in byt.items():
-                lst.sort(); n = len(lst); u = SOLO_STEP[t]
+                rnd = int(re.search(r"Round(\d)", w)[1])
+                lst.sort(); n = len(lst); u = SOLO_STEP[t] * SOLO_ROUND_WEIGHT.get(rnd, 1.0)
                 for i, (rk, pid) in enumerate(lst):
                     sc = 1 - 2 * i / (n - 1) if n > 1 else 0   # placement within the tier: +1 best ... -1 worst
                     f = round((1 + u) ** sc, 6)

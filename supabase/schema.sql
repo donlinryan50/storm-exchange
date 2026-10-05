@@ -268,6 +268,25 @@ end $$;
 -- ---------------------------------------------------------------------------------------------
 -- Trading: the only way to change cash, positions or prices
 -- ---------------------------------------------------------------------------------------------
+-- Market hours: trading on a region's players closes while one of its tournament rounds is being played. The refresh
+-- job keeps site_meta 'closures' = {windows: [{w, name, r (NA|EU), b, e, moves}]} from Osirion's official schedule.
+-- A round closes the region from its start until 2 hours after its scheduled end; a round that moves prices stays
+-- closed until its price moves are posted (site_meta 'shocks_done'), with a 12-hour cap in case the job is down.
+-- Returns the name of the round that has the region closed, or null if it's open.
+create or replace function public.market_closed(p_region text) returns text
+language sql stable security definer set search_path = public as $$
+  select coalesce(w->>'name', w->>'w')
+    from jsonb_array_elements(coalesce((select value->'windows' from public.site_meta where key = 'closures'), '[]'::jsonb)) w
+   where w->>'r' = p_region
+     and now() >= (w->>'b')::timestamptz
+     and (now() < (w->>'e')::timestamptz + interval '2 hours'
+          or (coalesce((w->>'moves')::boolean, false)
+              and now() < (w->>'e')::timestamptz + interval '12 hours'
+              and not coalesce((select value->'done' from public.site_meta where key = 'shocks_done') ? (w->>'w'), false)))
+   order by (w->>'b')::timestamptz
+   limit 1
+$$;
+
 create or replace function public.trade(p_player text, p_action text, p_shares integer) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
@@ -279,6 +298,7 @@ declare
   pos public.positions;
   o numeric; total numeric; side text; new_net integer; nw numeric; val_after numeric; price_after numeric;
   last_at timestamptz;
+  closed_ev text;
 begin
   if uid is null then raise exception 'Sign in to trade.'; end if;
   if p_action not in ('buy', 'sell', 'short', 'cover') then raise exception 'Unknown trade.'; end if;
@@ -288,6 +308,10 @@ begin
   if now() > s.end_at then raise exception '% has ended. Trading reopens when the next season starts.', s.name; end if;
   select * into pl from public.players where id = p_player and active;
   if pl.id is null then raise exception 'That player is no longer listed.'; end if;
+  closed_ev := public.market_closed(pl.region);
+  if closed_ev is not null then
+    raise exception 'Trading on % players is closed while % is being played. It reopens once the results are in.', pl.region, closed_ev;
+  end if;
 
   insert into public.portfolios (user_id, season) values (uid, s.n) on conflict do nothing;
   select * into pf from public.portfolios where user_id = uid and season = s.n for update;
@@ -416,6 +440,7 @@ grant execute on function public.login_email(text, text) to anon, authenticated;
 grant execute on function public.username_available(text) to anon, authenticated;
 revoke all on function public.trade(text, text, integer) from public, anon;
 grant execute on function public.trade(text, text, integer) to authenticated;
+grant execute on function public.market_closed(text) to anon, authenticated;
 revoke all on function public.sync_discord() from public, anon;
 grant execute on function public.sync_discord() to authenticated;
 revoke all on function public.handle_new_user() from public, anon, authenticated;

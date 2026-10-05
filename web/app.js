@@ -572,10 +572,10 @@ function marketHTML(){
       <span class="chg ${cls(c)}">${pct(c)}</span>
       <span class="sp">${spark(marketSeries(p),110,30,tone(c))}</span>
       <span class="sent"><span class="bar"><i style="width:${lp}%;background:${tot?"var(--up)":"var(--line)"}"></i><i style="width:${100-lp}%;background:${tot?"var(--down)":"var(--line)"}"></i></span><small>${tot? `${s.long} up · ${s.short} down` : "no bets yet"}</small></span>
-      <span class="acts"><button class="btn long" data-open="${esc(p.id)}" data-side="long">Up</button><button class="btn short" data-open="${esc(p.id)}" data-side="short">Down</button></span>
+      <span class="acts">${closedFor(p.region) ? `<span class="closed-tag" title="${esc(closedFor(p.region).name)} is being played">Closed</span>` : `<button class="btn long" data-open="${esc(p.id)}" data-side="long">Up</button><button class="btn short" data-open="${esc(p.id)}" data-side="short">Down</button>`}</span>
     </div>`;
   }).join("");
-  return `<div class="tools">
+  return `${hoursHTML()}<div class="tools">
       ${regions.map(r=>`<button class="chip" data-region="${esc(r)}" aria-pressed="${r===S.region}">${esc(r)}</button>`).join("")}
       <span class="chip-sep" aria-hidden="true"></span>
       ${[[0,"All tiers"],[1,"T1"],[2,"T2"],[3,"T3"]].map(([t,l])=>`<button class="chip tchip${t?" tc"+t:""}" data-tierf="${t}" aria-pressed="${(S.tier||0)===t}" title="${["Every tier","Top 30 Storm Rating in region","Rating rank 31–100","Rating rank 101+"][t]}">${l}</button>`).join("")}
@@ -769,6 +769,24 @@ function fillLeaders(){
 }
 
 /* ---------- player card + ticket ---------- */
+/* ---------- market hours: a region closes while one of its tournament rounds runs (mirrors market_closed() in the DB) ---------- */
+function closedFor(region){
+  const now = Date.now();
+  return (S.closures||[]).filter(w=>w.r===region && now >= Date.parse(w.b) &&
+    (now < Date.parse(w.e) + 2*36e5 || (w.moves && now < Date.parse(w.e) + 12*36e5 && !(S.shocksDone||[]).includes(w.w))))
+    .sort((a,b)=>a.b.localeCompare(b.b))[0] || null;
+}
+function reopenText(w){
+  return w.moves ? "Reopens as soon as this round's price moves are posted" : `Reopens about ${dtLabel(Date.parse(w.e) + 2*36e5)}`;
+}
+function hoursHTML(){
+  const closed = ["NA","EU"].map(r=>[r, closedFor(r)]).filter(([,w])=>w);
+  if(!closed.length) return "";
+  return `<div class="closed-banner" role="status">${closed.map(([r,w])=>`<div><b>${r} market closed</b> · ${esc(w.name)} is being played. ${reopenText(w)}.</div>`).join("")}</div>`;
+}
+let hoursKey = "";
+setInterval(()=>{ const k = ["NA","EU"].map(r=>closedFor(r)?.w||"").join("|"); if(k!==hoursKey){ hoursKey = k; render(); renderTicket(); } }, 30000);
+
 function openTicket(id, side){
   const cur = S.me.pos[id];
   S.ticket = {id, side: cur ? cur.side : (side || "long"), qty: 1, msg:""}; S.formOpen = null;
@@ -787,6 +805,7 @@ function renderTicket(){
   const opening = !cur || cur.side===t.side;
   const mx = opening ? maxOpen(p, t.side) : cur.sh;
   const s = sentiment()[p.id] || {long:0,short:0};
+  const shut = closedFor(p.region);
 
   const mPts = clip(marketSeries(p), S.range);
   const mChg = (mPts[mPts.length-1].y - mPts[0].y)/mPts[0].y;
@@ -846,9 +865,10 @@ function renderTicket(){
     </div>
     ${preview?`<div class="preview">${preview}</div>`:""}
     <p class="msg" id="tkMsg" role="status">${esc(t.msg)}</p>
+    ${shut ? `<p class="closed-banner"><b>${esc(p.region)} market closed</b> · ${esc(shut.name)} is being played. ${reopenText(shut)}.</p>` : ""}
     <div class="t-acts">
-      ${opening ? `<button class="btn gold" id="tkGo" ${S.saving?"disabled":""}>${t.side==="long"?"Bet up":"Bet down"} on ${q||0} share${q===1?"":"s"}</button>` : ""}
-      ${cur ? `<button class="btn" id="tkClosePos" ${S.saving?"disabled":""}>${cur.side==="long"?"Sell":"Cover"} ${Math.min(q,cur.sh)||0}</button>` : ""}
+      ${opening ? `<button class="btn gold" id="tkGo" ${S.saving||shut?"disabled":""}>${t.side==="long"?"Bet up":"Bet down"} on ${q||0} share${q===1?"":"s"}</button>` : ""}
+      ${cur ? `<button class="btn" id="tkClosePos" ${S.saving||shut?"disabled":""}>${cur.side==="long"?"Sell":"Cover"} ${Math.min(q,cur.sh)||0}</button>` : ""}
     </div>
   </div></div>`;
   const tk = root.querySelector(".ticket"); if(tk) tk.scrollTop = scroll;
@@ -1138,7 +1158,7 @@ function homeHTML(){
         <p>Think a pro is about to pop off? Bet up. Think they're overhyped? Bet down. You hold one side per player at a time.</p></div>
       <div class="step"><span class="no">3</span><h4>The crowd sets the price</h4>
         <div class="demo d-price"><div><b id="dmPx">2,000</b><span class="act" id="dmAct">Market open</span></div><div id="dmSpark"></div></div>
-        <p>Every <span class="impact">2,500</span> gold bars bought pushes a player up about 1%, and selling or shorting pulls them down. Get in early on the right pro and the crowd pays you. Div Cup Finals move prices too. Tier 1: top 5 +3.5%, 11th or worse −2.5%. Tier 2: top 15 +10%, 31st or worse −0.5%. Tier 3: top 20 +10%. Playing the week's Division 1 session but missing the Final costs 5% (T1), 1.25% (T2) or 0.35% (T3). Form moves tiers too: a bad result in each of the last 4 Finals drops a pro a tier, and an up finish in 3 of the last 4 lifts them one. FNCS Solo Qualifier rounds count as well: within each tier, every pro who played moves by placement, from the best finisher up (T1 +3%, T2 +4%, T3 +5%) to the worst down by the same amount, with everyone between scaled in proportion. Pros knocked out in an earlier round aren't moved.</p></div>
+        <p>Every <span class="impact">2,500</span> gold bars bought pushes a player up about 1%, and selling or shorting pulls them down. Get in early on the right pro and the crowd pays you. Div Cup Finals move prices too. Tier 1: top 5 +3.5%, 11th or worse −2.5%. Tier 2: top 15 +10%, 31st or worse −0.5%. Tier 3: top 20 +10%. Playing the week's Division 1 session but missing the Final costs 5% (T1), 1.25% (T2) or 0.35% (T3). Form moves tiers too: a bad result in each of the last 4 Finals drops a pro a tier, and an up finish in 3 of the last 4 lifts them one. FNCS Solo Qualifier rounds count as well: within each tier, every pro who played moves by placement, from the best finisher up (T1 +3%, T2 +4%, T3 +5%) to the worst down by the same amount, with everyone between scaled in proportion. Later rounds count more: Round 1 moves half as much and Round 2 three quarters as much as Round 3. Pros knocked out in an earlier round aren't moved.</p></div>
       <div class="step"><span class="no">4</span><h4>Scout their form</h4>
         <div class="demo d-form" aria-hidden="true">${dots.map(([n,k],i)=>`<i class="${k}" style="--i:${i}"><b class="${medal(n).trim()}">${k==="w"?"W":n}</b></i>`).join("")}</div>
         <p>Click any player for their market chart, Storm Rating, and game-by-game results from FNCS, Victory Cash Cups and Performance Evaluations.</p></div>
@@ -1541,6 +1561,7 @@ async function loadAll(){
   curSeason = r ? {n:r.n, name:r.name, start:r.start_at, end:r.end_at, depth:Number(r.depth), ipo:r.ipo || {}, past:r.past || []} : null;
   const m = Object.fromEntries((meta.data || []).map(x=>[x.key, x.value]));
   S.events = m.events?.events || []; S.discord = m.discord || null; S.simskill = m.simskill || null; S.statsAt = m.stats?.at || null;
+  S.closures = m.closures?.windows || []; S.shocksDone = m.shocks_done?.done || [];
   loadDiscordWidget();
   S.prSnaps = (snaps.data || []).map(x=>({at:x.at, pr:x.pr, note:x.note})).sort((a,b)=>a.at.localeCompare(b.at));
   await refreshMarket();

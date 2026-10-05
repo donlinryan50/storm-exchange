@@ -106,9 +106,10 @@ def main(in_json, out_txt):
     lines = ["#DONE " + ",".join(sorted(done))]
     lines += ["#WIN " + "|".join(map(str, x)) for x in WIN.values()]
     if FAILED: lines.append("#FAILED " + ",".join(sorted(FAILED)))
-    soon = now + dt.timedelta(days=8)
+    # scheduled windows from 12 hours ago to 8 days ahead: drive when the refresh runs and when the market closes
+    soon, recent = now + dt.timedelta(days=8), now - dt.timedelta(hours=12)
     lines += [f"#UPCOMING {w}|{s['begin']}|{s['end']}" for w, s in sorted(sched.items())
-              if w.startswith(f"S{season}_") and iso(s["end"]) > now and iso(s["begin"]) < soon]
+              if w.startswith(f"S{season}_") and iso(s["end"]) > recent and iso(s["begin"]) < soon]
     lines.append("#IDS " + json.dumps(learned, ensure_ascii=False))
     lines += [pid + "=" + ";".join("|".join(map(str, x)) for x in ws.values()) for pid, ws in F.items()]
     open(out_txt, "w", encoding="utf-8").write("\n".join(lines))
