@@ -70,7 +70,8 @@ def seed_id(e):
 
 def prep(epicmap, runfile, out):
     done = body(jload(runfile)).get("done", []) if runfile != "-" and os.path.exists(runfile) else []
-    jdump({"map": body(jload(epicmap)), "done": done}, out)
+    idf = os.path.join(os.path.dirname(epicmap), "epicids.json")   # account ids learned by earlier runs
+    jdump({"map": body(jload(epicmap)), "done": done, "ids": jload(idf) if os.path.exists(idf) else {}}, out)
     print(f"map {len(body(jload(epicmap)))} players, {len(done)} finished windows")
 
 def pr(epicmap, tsv, out_dir, players_dir="-"):
@@ -98,19 +99,21 @@ def stats(players_src, prev_dir, txt, out_dir):
     players = docs(players_src) if os.path.isdir(players_src) else {pid: {} for pid in body(jload(players_src))}
     prev = {}
     if prev_dir != "-" and os.path.isdir(prev_dir):
-        for d in docs(prev_dir).values(): prev.update(d.get("players", {}))
+        for d in docs(prev_dir).values(): prev.update(d["players"] if isinstance(d.get("players"), dict) else {})   # run.json's "players" is a count
     else:  # first run: start from the per-player form stored on player docs
         for pid, p in players.items():
             ev = (p.get("form") or {}).get("ev", [])
             for e in ev: e["id"] = seed_id(e)
             prev[pid] = {"ev": ev}
     lines = open(txt, encoding="utf-8").read().strip().splitlines()
-    done, fresh, meta, upcoming = [], {}, {}, []
+    done, fresh, meta, upcoming, failed, learned = [], {}, {}, [], [], {}
     for line in lines:
         if line.startswith("#DONE"): done = [w for w in line[5:].strip().split(",") if w]; continue
         if line.startswith("#WIN "):       # a window fetched this run: w|begin|end|complete|entries
             w, b, e, c, _n = (line[5:].split("|") + ["", "", "", "0", "0"])[:5]
             meta[w] = {"b": b, "end": e, "c": c == "1", "n": int(_n or 0)}; continue
+        if line.startswith("#IDS "): learned = json.loads(line[5:]); continue   # account ids matched by name this run
+        if line.startswith("#FAILED "): failed = [w for w in line[8:].strip().split(",") if w]; continue   # unreadable: stored results kept
         if line.startswith("#UPCOMING "):  # scheduled windows coming up: w|begin|end
             w, b, e = (line[10:].split("|") + ["", ""])[:3]; upcoming.append({"w": w, "b": b, "end": e}); continue
         if line.startswith("#") or "=" not in line: continue
@@ -152,20 +155,23 @@ def stats(players_src, prev_dir, txt, out_dir):
     for i, c in enumerate(chunks):
         p = os.path.join(out_dir, f"chunk_{i}.json"); jdump({"run": run, "at": at, "players": c}, p)
         writes.append({"op": "set", "collection": "statschunks", "doc_id": f"{run}-{i}", "file_path": p.replace("\\", "/")})
+    jdump(learned, os.path.join(out_dir, "epicids.json"))
     rp = os.path.join(out_dir, "run.json")
     pending = [{"w": w, "end": m["end"]} for w, m in sorted(meta.items()) if not m["c"] and (m["n"] or m["b"])]   # unscheduled + empty = not started
+    pending += [{"w": w, "end": None} for w in failed]
     jdump({"at": at, "chunks": len(chunks), "done": all_done, "players": sum(1 for v in merged.values() if v),
            "pending": pending, "upcoming": upcoming}, rp)
     writes.append({"op": "set", "collection": "statsruns", "doc_id": run, "file_path": rp.replace("\\", "/")})
     print(json.dumps(writes, ensure_ascii=False))
     print(f"# run {run}: {len(chunks)} chunks, {sum(len(v) for v in fresh.values())} new/updated results for {len(fresh)} players, "
           f"{len(meta)} windows fetched, {len(all_done)} complete, {len(pending)} still in progress")
+    if failed: print("# could not read (Osirion errors), kept stored results, will retry next run:", ", ".join(failed))
     if unmatched: print("# not found in any fetched window (Epic name changed?), kept old results:", ", ".join(unmatched))
 
 def diff(prev_dir, stats_dir, days="7"):
     """List stored events that changed between W/prev (before) and W/stats (after), within the last N days."""
     before, after = {}, {}
-    for d in docs(prev_dir).values(): before.update(d.get("players", {}))
+    for d in docs(prev_dir).values(): before.update(d["players"] if isinstance(d.get("players"), dict) else {})
     for f in glob.glob(os.path.join(stats_dir, "chunk_*.json")): after.update(body(jload(f))["players"])
     cut = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=int(days))).date().isoformat()
     rows = []

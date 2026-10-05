@@ -98,7 +98,9 @@ of the Market tab, and the **Test run** button appears in the nav.
 ## Daily data
 The "Storm Exchange live stats refresh" scheduled task in the Claude app (hourly on event days, daily
 otherwise) runs the scripts in `tools/`:
-- **Tournament results** from Osirion → `players.form`
+- **Tournament results** from Osirion's official public API (`tools/fetch_results.py`, <https://fnapi.osirion.gg>,
+  under its [API Terms](https://osirion.gg/legal/license), paced under the 60 requests/minute limit) → `players.form`.
+  Never scrape the Osirion website itself: its Terms of Service forbid it.
 - **Storm Rating**: our own player rating, calculated from those results (`build.py rating`, settings in
   `data/storm_rating_params.json`). It replaced Fortnite Tracker PR, which doesn't allow its data to be used;
   no Fortnite Tracker data is collected or stored.

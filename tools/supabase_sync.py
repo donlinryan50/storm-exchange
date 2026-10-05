@@ -74,6 +74,7 @@ def set_meta(key, value):
 def fetch(W):
     players = get_all("players?select=id,name,region,pr,open,epic,form&active=is.true&order=id")
     jdump({p["id"]: p["epic"] for p in players if p.get("epic")}, os.path.join(W, "meta", "epicmap.json"))
+    jdump(meta("epicids") or {}, os.path.join(W, "meta", "epicids.json"))   # Epic account id -> player, learned by past runs
     jdump({"players": {p["id"]: p["form"] for p in players if p.get("form")}}, os.path.join(W, "prev", "current.json"))
     for p in players:
         jdump({"name": p["name"], "region": p["region"], "open": p["open"], "pr": p["pr"]}, os.path.join(W, "players", p["id"] + ".json"))
@@ -123,6 +124,9 @@ def push_stats(W):
     changed = [pid for pid, form in new.items() if (prev.get(pid) or {}).get("ev") != form.get("ev")]
     for pid in changed:
         call("PATCH", "players?id=eq." + urllib.parse.quote(pid), {"form": new[pid]}, "return=minimal")
+    learned = os.path.join(W, "stats", "epicids.json")
+    if os.path.exists(learned) and jload(learned):
+        ids = meta("epicids") or {}; ids.update(jload(learned)); set_meta("epicids", ids)
     set_meta("stats", {"at": run["at"], "done": run["done"], "pending": run.get("pending", []), "upcoming": run.get("upcoming", [])})
     print(f"stats: {len(changed)} players updated, {len(run['done'])} finished windows, {len(run.get('pending', []))} still in progress")
 
