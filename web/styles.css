@@ -80,6 +80,8 @@ nav button[aria-selected="true"]{background:var(--gold);color:var(--gold-ink);bo
 .mkt-status b{color:var(--gold)}
 .btn.danger{background:var(--down);border-color:var(--down);color:#1a0006}
 .lg-skip.lg-del{color:var(--down)}
+.ts-slot{margin:0 0 10px;min-height:0}
+.ts-slot:not(:empty){min-height:65px}
 .lg-ck{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.4;margin:4px 0 12px}
 .lg-ck input{width:18px;height:18px;margin-top:1px;flex:none;accent-color:var(--gold)}
 .lg-card a,.site-foot a{color:var(--gold)}

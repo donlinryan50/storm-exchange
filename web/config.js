@@ -3,5 +3,7 @@
 // NEVER put the service_role key here (it bypasses all security and would be visible to everyone).
 window.STORMEX_CONFIG = {
   supabaseUrl: "https://ojmugdbtbaajobfekowo.supabase.co",
+  // Cloudflare Turnstile SITE key (public) for the sign-up/log-in bot check; leave "" to turn the check off.
+  turnstileSiteKey: "",
   supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qbXVnZGJ0YmFham9iZmVrb3dvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTExNTAwMTIsImV4cCI6MjEwNjcyNjAxMn0.pxBmyma1P-glHMI7N3n4kT4HoFn29dg5EHJ46F0xHn4"
 };

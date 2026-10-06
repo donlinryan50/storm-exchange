@@ -398,11 +398,13 @@ function loginHTML(){
     <label class="lg-f"><span class="label">Email</span><input id="lgEmail" type="email" maxlength="120" autocomplete="email" placeholder="you@example.com" required><small>Only used to confirm your account and reset your password. Never shown to anyone.</small></label>
     <label class="lg-f"><span class="label">Password</span><input id="lgPass" type="password" minlength="8" maxlength="72" autocomplete="new-password" required><small>At least 8 characters.</small></label>
     <label class="lg-ck"><input type="checkbox" id="lgAgree" required><span>I'm 13 or older and I agree to the <a href="/terms.html" target="_blank" rel="noopener">Terms of Service</a> and <a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>
+    <div class="ts-slot"></div>
     <button class="btn gold lg-go" type="submit">Create account</button>
     <button class="lg-skip" type="button" data-auth="login">I already have an account</button>
     <button class="lg-skip" type="button" id="lgSkip">Look around first</button>`);
   if(v==="reset") return shell("Reset password", "Enter your account email and we'll send you a link to set a new password.", `
     <label class="lg-f"><span class="label">Email</span><input id="lgEmail" type="email" maxlength="120" autocomplete="email" required></label>
+    <div class="ts-slot"></div>
     <button class="btn gold lg-go" type="submit">Send reset link</button>
     <button class="lg-skip" type="button" data-auth="login">Back to log in</button>`);
   if(v==="newpass") return shell("New password", "Choose a new password for your account.", `
@@ -433,6 +435,7 @@ function loginHTML(){
   return shell("Log in", "Log in with your username (or email) and password.", `
     <label class="lg-f"><span class="label">Username or email</span><input id="lgUser" maxlength="120" autocomplete="username" spellcheck="false" required></label>
     <label class="lg-f"><span class="label">Password</span><input id="lgPass" type="password" maxlength="72" autocomplete="current-password" required></label>
+    <div class="ts-slot"></div>
     <button class="btn gold lg-go" type="submit">Log in</button>
     <button class="lg-skip" type="button" data-auth="signup">Create an account</button>
     <button class="lg-skip" type="button" data-auth="reset">Forgot password?</button>
@@ -446,13 +449,35 @@ function renderLogin(force){
   root.hidden = !open; document.documentElement.style.overflow = open ? "hidden" : "";
   if(!open){ root.innerHTML = ""; return; }
   root.innerHTML = loginHTML();
+  mountCaptcha(root);
   root.querySelector("input")?.focus({preventScroll:true});
 }
 function showAuth(view, msg){ S.authView = view; S.authMsg = msg || ""; S.showLogin = true; renderLogin(true); }
+/* Bot check (Cloudflare Turnstile) on log-in, sign-up and password reset. On only when config.js has a site key;
+   Supabase then verifies each token (Authentication -> Attack Protection -> CAPTCHA, with the secret key). */
+const TS_KEY = (window.STORMEX_CONFIG || {}).turnstileSiteKey || "";
+let tsLoad = null;
+function loadTurnstile(){
+  if(!tsLoad) tsLoad = new Promise((ok, bad)=>{ const s = document.createElement("script");
+    s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"; s.async = true;
+    s.onload = ok; s.onerror = ()=>{ tsLoad = null; bad(new Error("bot check failed to load")); }; document.head.appendChild(s); });
+  return tsLoad;
+}
+function mountCaptcha(root){
+  S.captcha = null; S.tsId = null;
+  const el = root.querySelector(".ts-slot"); if(!TS_KEY || !el) return;
+  loadTurnstile().then(()=>{ if(!document.body.contains(el)) return;
+    S.tsId = window.turnstile.render(el, {sitekey:TS_KEY, theme:"dark", size:"flexible",
+      callback:t=>{ S.captcha = t; }, "expired-callback":()=>{ S.captcha = null; }, "error-callback":()=>{ S.captcha = null; }});
+  }).catch(()=>{ const e = document.getElementById("lgErr"); if(e) e.textContent = "The bot check couldn't load. Check your connection or ad blocker, then reload."; });
+}
+function captchaOpts(){ return TS_KEY ? {captchaToken:S.captcha} : {}; }
+function resetCaptcha(){ if(TS_KEY && window.turnstile && S.tsId != null){ try{ window.turnstile.reset(S.tsId); }catch(_){} } S.captcha = null; }
 async function submitAuth(){
   const v = S.authView, val = id => (document.getElementById(id)?.value || "").trim();
   const err = m => { const e = document.getElementById("lgErr"); if(e) e.textContent = m; };
   const go = document.querySelector("#lgForm .lg-go"); if(go) go.disabled = true;
+  if(TS_KEY && ["login","signup","reset"].includes(v) && !S.captcha){ if(go) go.disabled = false; return err("Please complete the bot check above the button."); }
   try{
     if(v==="login"){
       const login = val("lgUser"), pw = document.getElementById("lgPass").value;
@@ -464,7 +489,7 @@ async function submitAuth(){
         if(!data) return err("Wrong username or password.");
         email = data;
       }
-      const {error} = await sb.auth.signInWithPassword({email, password:pw});
+      const {error} = await sb.auth.signInWithPassword({email, password:pw, options:captchaOpts()});
       if(error) return err(/confirm/i.test(error.message) ? "Confirm your email first: check your inbox for the link we sent." : "Wrong username or password.");
       S.showLogin = false; toast("Welcome back."); return;
     }
@@ -476,7 +501,7 @@ async function submitAuth(){
       if(!document.getElementById("lgAgree")?.checked) return err("Please confirm you're 13 or older and agree to the Terms and Privacy Policy.");
       const {data:free} = await sb.rpc("username_available", {p_username:username});
       if(free === false) return err("That username is taken. Try another.");
-      const {data, error} = await sb.auth.signUp({email, password:pw, options:{data:{username, agreed:"true"}, emailRedirectTo:location.origin + location.pathname}});
+      const {data, error} = await sb.auth.signUp({email, password:pw, options:{data:{username, agreed:"true"}, emailRedirectTo:location.origin + location.pathname, ...captchaOpts()}});
       if(error) return err(niceErr(error));
       if(data.session){ S.showLogin = false; toast(`Welcome to the Exchange, ${username}. You have ${fmt(START_CASH)} gold bars to trade.`); }
       else showAuth("login", "Check your email to confirm your account, then log in here.");
@@ -484,7 +509,7 @@ async function submitAuth(){
     }
     if(v==="reset"){
       const email = val("lgEmail"); if(!email) return err("Enter your email.");
-      const {error} = await sb.auth.resetPasswordForEmail(email, {redirectTo:location.origin + location.pathname});
+      const {error} = await sb.auth.resetPasswordForEmail(email, {redirectTo:location.origin + location.pathname, ...captchaOpts()});
       if(error) return err(niceErr(error));
       return showAuth("login", "If that email has an account, a reset link is on its way.");
     }
@@ -503,7 +528,7 @@ async function submitAuth(){
       if(error) return err(niceErr(error));
       S.showLogin = false; toast("Password updated.");
     }
-  } finally { if(go && document.body.contains(go)) go.disabled = false; render(); }
+  } finally { resetCaptcha(); if(go && document.body.contains(go)) go.disabled = false; render(); }
 }
 async function linkDiscord(){
   // guilds.join lets our server function add them to the Storm Exchange Discord right after linking
