@@ -397,6 +397,7 @@ function loginHTML(){
     <label class="lg-f"><span class="label">Username</span><input id="lgUser" maxlength="16" autocomplete="username" spellcheck="false" placeholder="e.g. StormChaser" required></label>
     <label class="lg-f"><span class="label">Email</span><input id="lgEmail" type="email" maxlength="120" autocomplete="email" placeholder="you@example.com" required><small>Only used to confirm your account and reset your password. Never shown to anyone.</small></label>
     <label class="lg-f"><span class="label">Password</span><input id="lgPass" type="password" minlength="8" maxlength="72" autocomplete="new-password" required><small>At least 8 characters.</small></label>
+    <label class="lg-ck"><input type="checkbox" id="lgAgree" required><span>I'm 13 or older and I agree to the <a href="/terms.html" target="_blank" rel="noopener">Terms of Service</a> and <a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>
     <button class="btn gold lg-go" type="submit">Create account</button>
     <button class="lg-skip" type="button" data-auth="login">I already have an account</button>
     <button class="lg-skip" type="button" id="lgSkip">Look around first</button>`);
@@ -418,6 +419,13 @@ function loginHTML(){
         : `<button class="btn dcbtn lg-go" type="button" id="dcLink">Link Discord</button>
           <small>You'll log in to Discord to confirm it's your account. Only linked traders can win prizes.</small>`}
       </div>
+      ${!pr.agreed_at ? `<div class="lg-f"><span class="label">Terms</span>
+          <small>Please confirm you're 13 or older and agree to the <a href="/terms.html" target="_blank" rel="noopener">Terms of Service</a> and <a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a> to keep trading.</small>
+          <button class="btn gold" type="button" id="termsOk">I'm 13+ and I agree</button></div>`
+        : `<div class="lg-f"><span class="label">Prize eligibility</span>${pr.prize_ok_at
+          ? `<small><b>Confirmed.</b> You can win season prizes${linked ? "" : " once your Discord is linked"}.</small>`
+          : `<small>To win prizes you must be 18 or older (or have a parent or guardian's permission) and accept the <a href="/prize-rules.html" target="_blank" rel="noopener">Official Prize Rules</a>.</small>
+            <button class="btn" type="button" id="prizeOk">I'm eligible and accept the Prize Rules</button>`}</div>`}
       <button class="btn lg-go" type="button" id="lgOut">Log out</button>
       <button class="lg-skip" type="button" id="lgSkip">Close</button>`);
   }
@@ -464,9 +472,10 @@ async function submitAuth(){
       if(!USER_RE.test(username)) return err("Usernames are 3–16 letters, numbers, dots, dashes or underscores.");
       if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return err("Enter a valid email.");
       if(pw.length < 8) return err("Use at least 8 characters for your password.");
+      if(!document.getElementById("lgAgree")?.checked) return err("Please confirm you're 13 or older and agree to the Terms and Privacy Policy.");
       const {data:free} = await sb.rpc("username_available", {p_username:username});
       if(free === false) return err("That username is taken. Try another.");
-      const {data, error} = await sb.auth.signUp({email, password:pw, options:{data:{username}, emailRedirectTo:location.origin + location.pathname}});
+      const {data, error} = await sb.auth.signUp({email, password:pw, options:{data:{username, agreed:"true"}, emailRedirectTo:location.origin + location.pathname}});
       if(error) return err(niceErr(error));
       if(data.session){ S.showLogin = false; toast(`Welcome to the Exchange, ${username}. You have ${fmt(START_CASH)} gold bars to trade.`); }
       else showAuth("login", "Check your email to confirm your account, then log in here.");
@@ -534,9 +543,9 @@ function renderSeason(){
   const s = curSeason, over = seasonOver(), btn = discordBtn();
   document.getElementById("seasonClock").innerHTML = s
     ? `<div class="big">${over ? "FINAL" : "S"+esc(s.n)}</div><div class="label">${esc(s.name)} · ${over ? "has ended" : "ends "+dLabel(Date.parse(s.end))+" · "+daysLeft()}</div>`
-    : `<div class="big">OPEN</div><div class="label">Market open 24/7</div>`;
+    : `<div class="big">OPEN</div><div class="label">Market open outside tournament rounds</div>`;
   const k = document.getElementById("hmKick");
-  if(k) k.textContent = s ? `Pro player futures · ${s.name} ${over ? "has ended" : "ends "+dLabel(Date.parse(s.end))}` : "Pro player futures · Market open 24/7";
+  if(k) k.textContent = s ? `Pro player futures · ${s.name} ${over ? "has ended" : "ends "+dLabel(Date.parse(s.end))}` : "Pro player futures · Market open outside tournament rounds";
   document.querySelectorAll(".dc-slot").forEach(el=>{ if(el.innerHTML !== btn) el.innerHTML = btn; });
   const per1 = fmt(depthNow()/100); document.querySelectorAll(".impact").forEach(el=>{ if(el.textContent !== per1) el.textContent = per1; });
 }
@@ -608,6 +617,7 @@ function adminHTML(){
       <button class="btn gold" type="submit">List player</button>
     </form>
     <p class="label" style="margin:10px 0 0;text-transform:none;letter-spacing:0">Only admins see this. A new player's IPO price is their Storm Rating ÷ 100. After that, trading sets the price.</p>
+    ${epicAdminHTML()}
     <h3>Season and Discord</h3>
     <form id="seasonForm">
       <div class="field"><label class="label" for="seasonEnd">${curSeason ? esc(curSeason.name)+" ends" : "Season end"}</label><input id="seasonEnd" type="datetime-local" value="${curSeason ? toLocalInput(curSeason.end) : ""}" ${curSeason ? "" : "disabled"}></div>
@@ -620,6 +630,23 @@ function adminHTML(){
       <button class="btn gold" type="submit">Save Discord</button>
     </form>
     <p class="label" style="margin:10px 0 0;text-transform:none;letter-spacing:0">To end a season and start the next, ask Claude to roll it over. That saves the top Discord-linked finishers as past champions, re-IPOs every player at their current Storm Rating and resets everyone to ${fmt(START_CASH)} gold bars.</p></div>`;
+}
+// Players whose Epic account hasn't been matched to any tournament result: usually a renamed Epic account.
+function epicAdminHTML(){
+  if(!S.epicIds) return "";
+  const miss = S.players.filter(p=>!S.epicIds.has(p.id)).sort((a,b)=>(b.pr||0)-(a.pr||0));
+  if(!miss.length) return `<h3>Epic names</h3><p class="label" style="text-transform:none;letter-spacing:0">Every player is matched to their Epic account.</p>`;
+  return `<h3>Epic names (${miss.length} unmatched)</h3>
+    <p class="label" style="text-transform:none;letter-spacing:0;margin-top:0">These players' results aren't updating because their Epic display name doesn't match any tournament leaderboard. Enter their current Epic name; the next hourly refresh matches them and remembers their account for good.</p>
+    <div class="epic-list">${miss.map(p=>`<div class="epic-row"><b>${esc(p.name)}</b><span class="label">${esc(p.region)}</span>
+      <input id="epic-${esc(p.id)}" value="${esc(p.epic)}" maxlength="32" aria-label="${esc(p.name)} Epic name"><button class="btn" type="button" data-epicsave="${esc(p.id)}">Save</button></div>`).join("")}</div>`;
+}
+async function saveEpic(pid){
+  const v = (document.getElementById("epic-"+pid)?.value || "").trim();
+  const {error} = await sb.rpc("admin_set_epic", {p_player:pid, p_epic:v});
+  if(error) return toast(niceErr(error));
+  const p = S.players.find(x=>x.id===pid); if(p) p.epic = v;
+  toast(`Saved. ${p ? p.name : pid} will be matched on the next refresh.`);
 }
 function toLocalInput(iso){ const d = new Date(iso); return new Date(d - d.getTimezoneOffset()*6e4).toISOString().slice(0,16); }
 
@@ -779,10 +806,19 @@ function closedFor(region){
 function reopenText(w){
   return w.moves ? "Reopens as soon as this round's price moves are posted" : `Reopens about ${dtLabel(Date.parse(w.e) + 2*36e5)}`;
 }
+function nextClosure(region){
+  const now = Date.now();
+  return (S.closures||[]).filter(w=>w.r===region && Date.parse(w.b) > now).sort((a,b)=>a.b.localeCompare(b.b))[0] || null;
+}
+function agoLabel(ms){ const m = Math.max(0, Math.round((Date.now()-ms)/60000)); return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.floor(m/60)}h ${m%60}m ago` : dLabel(ms); }
 function hoursHTML(){
   const closed = ["NA","EU"].map(r=>[r, closedFor(r)]).filter(([,w])=>w);
-  if(!closed.length) return "";
-  return `<div class="closed-banner" role="status">${closed.map(([r,w])=>`<div><b>${r} market closed</b> · ${esc(w.name)} is being played. ${reopenText(w)}.</div>`).join("")}</div>`;
+  const soon = ["NA","EU"].filter(r=>!closedFor(r)).map(r=>[r, nextClosure(r)]).filter(([,w])=>w && Date.parse(w.b)-Date.now() < 24*36e5);
+  const hb = S.heartbeat, stale = S.admin && hb?.at && Date.now()-Date.parse(hb.at) > 2*36e5;
+  const failed = S.admin && hb?.status && /^failed/.test(hb.status);
+  return `${closed.length ? `<div class="closed-banner" role="status">${closed.map(([r,w])=>`<div><b>${r} market closed</b> · ${esc(w.name)} is being played. ${reopenText(w)}.</div>`).join("")}</div>` : ""}
+    ${stale || failed ? `<div class="closed-banner warn" role="alert"><b>Admin: results refresh ${failed ? "failed" : "hasn't run"}</b> · last check ${agoLabel(Date.parse(hb.at))}${failed ? " · "+esc(hb.status) : ""}. Check the Refresh workflow on GitHub Actions.</div>` : ""}
+    <p class="mkt-status">${S.statsAt ? `Tournament results updated ${agoLabel(Date.parse(S.statsAt))}` : ""}${soon.map(([r,w])=>` · <b>${r} closes ${untilLabel(Date.parse(w.b)-Date.now())}</b> for ${esc(w.name.replace(/ \((NA|EU)\)$/, ""))}`).join("")}</p>`;
 }
 let hoursKey = "";
 setInterval(()=>{ const k = ["NA","EU"].map(r=>closedFor(r)?.w||"").join("|"); if(k!==hoursKey){ hoursKey = k; render(); renderTicket(); } }, 30000);
@@ -981,6 +1017,12 @@ document.addEventListener("click", e=>{
   if(el.id==="acct"){ showAuth(S.uid ? "account" : "login"); return; }
   if(el.dataset.auth){ showAuth(el.dataset.auth); return; }
   if(el.id==="dcLink"){ linkDiscord(); return; }
+  if(el.id==="termsOk" || el.id==="prizeOk"){
+    sb.rpc(el.id==="termsOk" ? "accept_terms" : "confirm_prize_eligibility").then(async ({error})=>{
+      if(error) return toast(niceErr(error));
+      await loadProfile(); renderLogin(true); toast(el.id==="termsOk" ? "Thanks, you're all set." : "You're eligible for season prizes."); });
+    return; }
+  if(el.dataset.epicsave){ saveEpic(el.dataset.epicsave); return; }
   if(el.id==="dcUnlink"){ unlinkDiscord(); return; }
   if(el.id==="lgOut"){ sb.auth.signOut().then(()=>{ S.showLogin = false; render(); toast("Logged out."); }); return; }
   if(el.dataset.sim){
@@ -1133,7 +1175,7 @@ function homeHTML(){
   return `<section class="hero">
     <canvas id="arena" aria-hidden="true"></canvas>
     <div class="hero-in">
-      <div class="kick" id="hmKick">Pro player futures · Market open 24/7</div>
+      <div class="kick" id="hmKick">Pro player futures</div>
       <h2>Trade the <span>pros.</span></h2>
       <p>Back the pros you think are about to take over and bet against the ones you think will fall off. Every trade moves the price, and the market heats up every time a big tournament drops. Climb the leaderboard by calling it first.</p>
       <div class="ctas"><button class="btn gold" data-tab="market">Enter the market</button><button class="btn" data-goto="how">How it works</button><span class="dc-slot"></span></div>
@@ -1141,6 +1183,7 @@ function homeHTML(){
     </div>
   </section>
   <section class="dc-card wrap" id="dcCard" hidden></section>
+  <section class="moves-wrap" id="moves" hidden></section>
   <section class="ev-wrap" id="events">
     <div class="ev-head"><h3>Upcoming events</h3><span>Prices move fastest around these. Times shown in your time zone.</span></div>
     <div class="tools" id="evChips"></div>
@@ -1172,7 +1215,29 @@ function homeHTML(){
 function renderHome(){
   const root = document.getElementById("homeRoot");
   if(!root.dataset.built){ root.innerHTML = homeHTML(); root.dataset.built = "1"; startDemos(); }
-  startArena(); updateHomeLive(); renderDcCard();
+  startArena(); updateHomeLive(); renderDcCard(); renderMoves();
+}
+// Latest tournament price moves: the two most recent rounds, biggest risers and fallers in each.
+function renderMoves(){
+  const el = document.getElementById("moves"); if(!el) return;
+  const byW = {};
+  for(const s of seasonShocks()) if(s.w){ (byW[s.w] = byW[s.w] || {w:s.w, ts:0, list:[]}).list.push(s); byW[s.w].ts = Math.max(byW[s.w].ts, s.ts); }
+  const rounds = Object.values(byW).sort((a,b)=>b.ts-a.ts || b.w.localeCompare(a.w)).slice(0, 2);
+  if(!rounds.length){ el.hidden = true; return; }
+  const name = w => (S.closures||[]).find(c=>c.w===w)?.name || roundName(w);
+  const item = s => { const p = byId(s.pid); return p ? `<li><button class="pname" data-open="${esc(p.id)}">${esc(p.name)}</button><b class="num ${s.f>1?"up":"down"}">${pct(s.f-1)}</b><span>${esc((s.why||"").replace(/ in (FNCS Solos|the Div Cup).*$/, ""))}</span></li>` : ""; };
+  const html = `<div class="ev-head"><h3>Latest price moves</h3><span>How the last tournament rounds moved the market.</span></div>
+    <div class="moves">${rounds.map(r=>{ const l = r.list.slice().sort((a,b)=>b.f-a.f);
+      return `<div class="mv-card"><h4>${esc(name(r.w))}</h4><span class="label">${dLabel(r.ts)} · ${l.length} pros moved</span>
+        <div class="mv-cols"><ul>${l.filter(s=>s.f>1).slice(0,5).map(item).join("")}</ul><ul>${l.filter(s=>s.f<1).slice(-5).reverse().map(item).join("")}</ul></div></div>`; }).join("")}</div>`;
+  if(el.innerHTML !== html) el.innerHTML = html;
+  el.hidden = false;
+}
+function roundName(w){
+  const reg = /_EU$/.test(w) ? "EU" : "NA";
+  let m = w.match(/FNCSSoloQualifiers_Qual(\d)Round(\d)(?:Day(\d))?/); if(m) return `FNCS Solo Qualifier ${m[1]} Round ${m[2]}${m[3] ? " Day "+m[3] : ""} (${reg})`;
+  m = w.match(/Division(\d)_Week(\d)Final/); if(m) return `Division ${m[1]} Cup Week ${m[2]} Final (${reg})`;
+  return w.replace(/^S\d+_/, "").replace(/_/g, " ");
 }
 function updateTicker(){
   const t = document.getElementById("ticker");
@@ -1555,13 +1620,14 @@ async function loadAll(){
     sb.from("site_meta").select("*"),
     sb.from("prsnaps").select("*").order("at", {ascending:false}).limit(200)]);
   if(se.error) throw se.error;
-  S.players = pl.map(p=>({id:p.id, name:p.name, region:p.region, pr:p.pr, open:p.open, note:p.note || "", listed:p.listed,
+  S.players = pl.map(p=>({id:p.id, name:p.name, region:p.region, pr:p.pr, open:p.open, note:p.note || "", listed:p.listed, epic:p.epic || "",
     prHistory:p.pr_history || [], form:p.form ? {src:"Osirion", ...p.form} : null}));
   const r = se.data[0];
   curSeason = r ? {n:r.n, name:r.name, start:r.start_at, end:r.end_at, depth:Number(r.depth), ipo:r.ipo || {}, past:r.past || []} : null;
   const m = Object.fromEntries((meta.data || []).map(x=>[x.key, x.value]));
   S.events = m.events?.events || []; S.discord = m.discord || null; S.simskill = m.simskill || null; S.statsAt = m.stats?.at || null;
   S.closures = m.closures?.windows || []; S.shocksDone = m.shocks_done?.done || [];
+  S.heartbeat = m.heartbeat || null; S.epicIds = new Set(Object.values(m.epicids || {}));
   loadDiscordWidget();
   S.prSnaps = (snaps.data || []).map(x=>({at:x.at, pr:x.pr, note:x.note})).sort((a,b)=>a.at.localeCompare(b.at));
   await refreshMarket();
@@ -1614,6 +1680,7 @@ async function setSession(session){
   if(uid === S.uid && S.profileLoaded) return;
   S.uid = uid; S.profileLoaded = true;
   await loadProfile();
+  if(S.profile && !S.profile.agreed_at) showAuth("account", "We've added Terms of Service and a Privacy Policy. Please review and accept them below.");
   if(S.mode==="db"){ await refreshMarket(); derive(); render(); }
 }
 

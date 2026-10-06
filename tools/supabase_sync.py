@@ -29,9 +29,11 @@ def creds():
         sys.exit("Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY (env vars or ~/.stormex/supabase.env).")
     return vals["SUPABASE_URL"].rstrip("/"), vals["SUPABASE_SERVICE_ROLE_KEY"]
 
-URL, KEY = creds()
+_CREDS = []   # loaded on first use, so the helpers can be imported (e.g. by tests) without credentials
 
 def call(method, path, body=None, prefer=None):
+    if not _CREDS: _CREDS.extend(creds())
+    URL, KEY = _CREDS
     h = {"apikey": KEY, "Authorization": f"Bearer {KEY}", "Content-Type": "application/json"}
     if prefer: h["Prefer"] = prefer
     data = json.dumps(body).encode() if body is not None else None
@@ -154,6 +156,14 @@ def push_stats(W):
 def push_shocks(W):
     prev = jload(os.path.join(W, "shk", "prev.json")); out = jload(os.path.join(W, "shk", "out.json"))
     new = out["list"][len(prev["list"]):]
+    # never post a move twice (e.g. two refreshes running at once): skip player+round pairs already recorded
+    wins = sorted({x.get("w") for x in new if x.get("w")})
+    if wins:
+        have = {(r["player_id"], r["window_id"]) for r in get_all(
+            f"shocks?select=player_id,window_id&season=eq.{out['season']}&window_id=in.({','.join(wins)})&order=id")}
+        dup = [x for x in new if (x["pid"], x.get("w")) in have]
+        if dup: print(f"shocks: skipped {len(dup)} moves already posted")
+        new = [x for x in new if (x["pid"], x.get("w")) not in have]
     if new:
         call("POST", "shocks", [{"season": out["season"], "player_id": x["pid"], "factor": x["f"], "window_id": x.get("w"),
                                   "region": x.get("r"), "kind": x.get("k"), "why": x.get("why"), "at": iso_ms(x["ts"])} for x in new],
@@ -173,11 +183,20 @@ def should_run():
     live = any(w.get("b") and w.get("end") and hours_until(w["b"]) <= 1 and hours_until(w["end"]) >= -14
                for w in stats.get("upcoming") or [])
     event_day = event_day or pending > 0 or live
-    first_run = dt.datetime.now().hour < 10
+    hb = meta("heartbeat") or {}   # the daily full refresh: once per local day, whatever the hour
+    first_run = (hb.get("full_day") or "") != dt.datetime.now().date().isoformat()
     force = os.path.join(os.path.expanduser("~"), ".stormex", "force_next_run")   # one-time manual override
     forced = os.path.exists(force)
     if forced: os.remove(force)
     print(("RUN" if event_day or first_run or forced else "SKIP") + f" event_day={event_day} pending_windows={pending} first_run_today={first_run}" + (" forced=True" if forced else ""))
+
+def heartbeat(status, full="0"):
+    """Record that the refresh ran (the site warns admins when this goes stale)."""
+    hb = meta("heartbeat") or {}
+    hb.update({"at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), "status": status})
+    if full == "1": hb.update({"full_at": hb["at"], "full_day": dt.datetime.now().date().isoformat()})
+    set_meta("heartbeat", hb)
+    print("heartbeat:", status)
 
 def latest_prsnap(W):
     rows = call("GET", "prsnaps?select=at,pr,note&order=at.desc&limit=1")
@@ -199,4 +218,4 @@ def cleanup():
 if __name__ == "__main__":
     cmd, args = sys.argv[1], sys.argv[2:]
     {"should-run": should_run, "fetch": fetch, "latest-prsnap": latest_prsnap, "push-pr": push_pr,
-     "push-stats": push_stats, "push-shocks": push_shocks, "cleanup": cleanup, "purge-fortnite-tracker": purge_fortnite_tracker}[cmd](*args)
+     "push-stats": push_stats, "push-shocks": push_shocks, "cleanup": cleanup, "heartbeat": heartbeat, "purge-fortnite-tracker": purge_fortnite_tracker}[cmd](*args)

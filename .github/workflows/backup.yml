@@ -1,0 +1,40 @@
+# Nightly encrypted backup of every Storm Exchange table (tools/backup.py), kept 30 days as a workflow artifact.
+# This repository is public, so the backup is encrypted with BACKUP_PASSPHRASE (a repository secret) before upload;
+# without the passphrase the file is unreadable. To restore, download the artifact and run:
+#   openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in stormex-backup.tar.gz.enc -out backup.tar.gz
+name: Backup
+
+on:
+  schedule:
+    - cron: "30 8 * * *"         # daily, 08:30 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Export and encrypt
+        run: |
+          test -n "$BACKUP_PASSPHRASE" || { echo "Set the BACKUP_PASSPHRASE secret first"; exit 1; }
+          python tools/backup.py "$RUNNER_TEMP/b/stormex-$(date -u +%F)"
+          tar -czf "$RUNNER_TEMP/backup.tar.gz" -C "$RUNNER_TEMP/b" .
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:BACKUP_PASSPHRASE \
+            -in "$RUNNER_TEMP/backup.tar.gz" -out "$RUNNER_TEMP/stormex-backup.tar.gz.enc"
+          rm -rf "$RUNNER_TEMP/b" "$RUNNER_TEMP/backup.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stormex-backup-${{ github.run_id }}
+          path: ${{ runner.temp }}/stormex-backup.tar.gz.enc
+          retention-days: 30

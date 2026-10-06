@@ -151,22 +151,18 @@ def stats(players_src, prev_dir, txt, out_dir):
         if cur and size + s > 180000: chunks.append(cur); cur, size = {}, 0
         cur[pid] = {"updated": at[:10], "ev": merged[pid]}; size += s
     if cur: chunks.append(cur)
-    writes = []
     for i, c in enumerate(chunks):
-        p = os.path.join(out_dir, f"chunk_{i}.json"); jdump({"run": run, "at": at, "players": c}, p)
-        writes.append({"op": "set", "collection": "statschunks", "doc_id": f"{run}-{i}", "file_path": p.replace("\\", "/")})
+        jdump({"run": run, "at": at, "players": c}, os.path.join(out_dir, f"chunk_{i}.json"))
     jdump(learned, os.path.join(out_dir, "epicids.json"))
     rp = os.path.join(out_dir, "run.json")
     pending = [{"w": w, "end": m["end"]} for w, m in sorted(meta.items()) if not m["c"] and (m["n"] or m["b"])]   # unscheduled + empty = not started
     pending += [{"w": w, "end": None} for w in failed]
     jdump({"at": at, "chunks": len(chunks), "done": all_done, "players": sum(1 for v in merged.values() if v),
            "pending": pending, "upcoming": upcoming}, rp)
-    writes.append({"op": "set", "collection": "statsruns", "doc_id": run, "file_path": rp.replace("\\", "/")})
-    print(json.dumps(writes, ensure_ascii=False))
     print(f"# run {run}: {len(chunks)} chunks, {sum(len(v) for v in fresh.values())} new/updated results for {len(fresh)} players, "
           f"{len(meta)} windows fetched, {len(all_done)} complete, {len(pending)} still in progress")
     if failed: print("# could not read (Osirion errors), kept stored results, will retry next run:", ", ".join(failed))
-    if unmatched: print("# not found in any fetched window (Epic name changed?), kept old results:", ", ".join(unmatched))
+    if unmatched: print("# not found in any window read this run (Epic name changed, or below the top 10,000 of a big round), kept old results:", ", ".join(unmatched))
 
 def diff(prev_dir, stats_dir, days="7"):
     """List stored events that changed between W/prev (before) and W/stats (after), within the last N days."""
@@ -452,7 +448,8 @@ def rating(forms_dir, hist_txt, params_json, out_dir):
             if len(parts) < 3: continue
             m = re.match(r"S(\d+)_FNCSDivisionalCup_Division1_Week(\d)Final", parts[0])
             if not m or int(m[1]) not in HIST_SEASON_START: continue
-            day = (dt.date.fromisoformat(HIST_SEASON_START[int(m[1])]) + dt.timedelta(days=7 * int(m[2]))).isoformat()
+            day = parts[3] if len(parts) > 3 and re.match(r"\d{4}-\d\d-\d\d$", parts[3]) else \
+                  (dt.date.fromisoformat(HIST_SEASON_START[int(m[1])]) + dt.timedelta(days=7 * int(m[2]))).isoformat()
             events.setdefault(parts[1], []).append(("divfinal", int(parts[2]), day))
     today = dt.datetime.now(dt.timezone.utc).date()
     out = {}

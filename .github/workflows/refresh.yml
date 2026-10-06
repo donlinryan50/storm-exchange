@@ -1,0 +1,58 @@
+# Hourly Storm Exchange refresh: tournament results from Osirion's official public API, Storm Ratings, price moves,
+# market hours and Discord roles (tools/refresh.py). Most hours it checks the schedule and stops in a few seconds.
+#
+# Repository secrets (Settings -> Secrets and variables -> Actions):
+#   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY            required
+#   DISCORD_BOT_TOKEN, DISCORD_GUILD_ID,               optional (Discord role sync)
+#   DISCORD_VERIFIED_ROLE_ID, DISCORD_TOP10_ROLE_ID
+# This repository is public, so the job never prints secrets or writes data back to the repo.
+name: Refresh
+
+on:
+  schedule:
+    - cron: "7 * * * *"        # every hour (UTC); GitHub may start it a few minutes late
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Run the full refresh even if no tournament is on"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: refresh                # never two refreshes at once
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      TZ: America/New_York      # "first run of the day" follows Eastern time
+      PYTHONIOENCODING: utf-8
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+      DISCORD_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
+      DISCORD_VERIFIED_ROLE_ID: ${{ secrets.DISCORD_VERIFIED_ROLE_ID }}
+      DISCORD_TOP10_ROLE_ID: ${{ secrets.DISCORD_TOP10_ROLE_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # the archived Div 1 Finals (rating history) are rebuilt from the API once a week and cached between runs
+      - name: Week
+        id: week
+        run: echo "w=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+      - name: Restore rating history
+        uses: actions/cache@v4
+        with:
+          path: data/div1_finals_history.txt
+          key: div1-history-${{ steps.week.outputs.w }}
+      - name: Tests (a scoring bug must never reach live prices)
+        run: python -m unittest discover -s tests
+      - name: Refresh
+        run: python tools/refresh.py "$RUNNER_TEMP/w" ${{ inputs.force && '--force' || '' }}

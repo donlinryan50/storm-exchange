@@ -10,6 +10,9 @@ supabase/
   schema.sql      database tables, security rules and server-side trading (run once)
 migration/
   seed.py         uploads players, a year of tournament stats, events and Season 1
+tools/            hourly refresh (refresh.py), results/rating/price-move builders, backup
+tests/            tests for the scoring rules
+.github/workflows refresh (hourly), backup (nightly), tests
 vercel.json       hosting settings + security headers
 ```
 
@@ -95,16 +98,32 @@ of the Market tab, and the **Test run** button appears in the nav.
   (Authentication → Emails → SMTP Settings, e.g. Resend or Postmark) so sign-up and reset emails always arrive.
 - **Prizes:** keep entry free. Paid entry for cash prizes can fall under gambling or sweepstakes laws.
 
-## Daily data
-The "Storm Exchange live stats refresh" scheduled task in the Claude app (hourly on event days, daily
-otherwise) runs the scripts in `tools/`:
+## Hourly refresh (GitHub Actions)
+`.github/workflows/refresh.yml` runs `tools/refresh.py` every hour. Most hours it checks the schedule and stops; when a
+tournament is on or results are pending it does the full refresh:
 - **Tournament results** from Osirion's official public API (`tools/fetch_results.py`, <https://fnapi.osirion.gg>,
   under its [API Terms](https://osirion.gg/legal/license), paced under the 60 requests/minute limit) → `players.form`.
   Never scrape the Osirion website itself: its Terms of Service forbid it.
-- **Storm Rating**: our own player rating, calculated from those results (`build.py rating`, settings in
-  `data/storm_rating_params.json`). It replaced Fortnite Tracker PR, which doesn't allow its data to be used;
-  no Fortnite Tracker data is collected or stored.
-- **Tournament price moves** (Div Cup Finals, FNCS Solo Qualifier rounds) → `shocks`, applied to prices by the database
-- **Discord roles** (`discord_roles.py`)
+- **Storm Rating**: our own player rating from those results plus past seasons' Division 1 Finals
+  (`tools/fetch_history.py`, from the same API; settings in `data/storm_rating_params.json`). No Fortnite Tracker data.
+- **Tournament price moves** (Div Cup Finals, FNCS Solo Qualifier rounds) → `shocks`, applied to prices by the database.
+- **Market hours**: the round schedule → `site_meta.closures`; `trade()` refuses trades on a region's players while its
+  round is played and until its price moves are posted (`supabase/market_hours.sql`).
+- **Discord roles** (`discord_roles.py`) and a heartbeat the site uses to warn admins if the refresh stops.
 
-`tools/supabase_sync.py` reads the service-role key from `%USERPROFILE%\.stormex\supabase.env`, never from the repo.
+Repository secrets (Settings → Secrets and variables → Actions): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
+`BACKUP_PASSPHRASE`, and optionally `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_VERIFIED_ROLE_ID`,
+`DISCORD_TOP10_ROLE_ID`. Run it by hand from the Actions tab (Refresh → Run workflow). Locally:
+`python tools/refresh.py <work dir>` reads the key from `%USERPROFILE%\.stormex\supabase.env`, never from the repo.
+
+## Backups and tests
+- `.github/workflows/backup.yml` exports every table nightly (`tools/backup.py`), encrypts it with `BACKUP_PASSPHRASE`
+  and keeps it 30 days as a workflow artifact. Restore: download it, then
+  `openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in stormex-backup.tar.gz.enc -out backup.tar.gz`.
+- `tests/test_build.py` checks the scoring rules that move prices. They run on every push and before every refresh:
+  `python -m unittest discover -s tests -v`.
+
+## Legal pages
+`web/terms.html`, `web/privacy.html` and `web/prize-rules.html`, linked from the footer and the sign-up form. New accounts
+must confirm they're 13+ and accept them (`supabase/site_updates.sql`); winning a prize also needs 18+ (or a guardian's
+permission) and accepting the Prize Rules.
