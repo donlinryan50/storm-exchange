@@ -423,8 +423,13 @@ function loginHTML(){
           <small>Please confirm you're 13 or older and agree to the <a href="/terms.html" target="_blank" rel="noopener">Terms of Service</a> and <a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a> to keep trading.</small>
           <button class="btn gold" type="button" id="termsOk">I'm 13+ and I agree</button></div>` : ""}
       <button class="btn lg-go" type="button" id="lgOut">Log out</button>
+      <button class="lg-skip lg-del" type="button" data-auth="delete">Delete my account</button>
       <button class="lg-skip" type="button" id="lgSkip">Close</button>`);
   }
+  if(v==="delete") return shell("Delete account", "This permanently deletes your account, your portfolio, your open positions and your trade history. Your open bets are removed from the market. This can't be undone.", `
+    <label class="lg-f"><span class="label">Type your username to confirm</span><input id="lgConfirm" maxlength="16" autocomplete="off" spellcheck="false" placeholder="${esc(S.profile?.username || "")}" required></label>
+    <button class="btn lg-go danger" type="submit">Delete my account forever</button>
+    <button class="lg-skip" type="button" data-auth="account">Keep my account</button>`);
   return shell("Log in", "Log in with your username (or email) and password.", `
     <label class="lg-f"><span class="label">Username or email</span><input id="lgUser" maxlength="120" autocomplete="username" spellcheck="false" required></label>
     <label class="lg-f"><span class="label">Password</span><input id="lgPass" type="password" maxlength="72" autocomplete="current-password" required></label>
@@ -482,6 +487,14 @@ async function submitAuth(){
       const {error} = await sb.auth.resetPasswordForEmail(email, {redirectTo:location.origin + location.pathname});
       if(error) return err(niceErr(error));
       return showAuth("login", "If that email has an account, a reset link is on its way.");
+    }
+    if(v==="delete"){
+      const confirm = val("lgConfirm");
+      if(!S.profile || confirm.toLowerCase() !== String(S.profile.username).toLowerCase()) return err("Type your username exactly to confirm.");
+      const {error} = await sb.rpc("delete_my_account", {p_confirm:confirm});
+      if(error) return err(niceErr(error));
+      await sb.auth.signOut();
+      S.showLogin = false; toast("Your account has been deleted."); return;
     }
     if(v==="newpass"){
       const pw = document.getElementById("lgPass").value;

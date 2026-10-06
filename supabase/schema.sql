@@ -466,6 +466,25 @@ begin
   if not found then raise exception 'No such player.'; end if;
 end $$;
 
+-- A trader deletes their own account: open positions come off the market, then the sign-in account (cascades).
+create or replace function public.delete_my_account(p_confirm text) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  uid uuid := auth.uid();
+  uname text;
+begin
+  if uid is null then raise exception 'Sign in first.'; end if;
+  select username into uname from public.profiles where id = uid;
+  if uname is null or lower(trim(coalesce(p_confirm, ''))) <> lower(uname) then
+    raise exception 'Type your username exactly to confirm.';
+  end if;
+  update public.market m
+     set net = m.net - case when x.side = 'long' then x.shares else -x.shares end
+    from public.positions x
+   where x.user_id = uid and m.season = x.season and m.player_id = x.player_id;
+  delete from auth.users where id = uid;
+end $$;
+
 -- ---------------------------------------------------------------------------------------------
 -- Function permissions: browsers may call only these
 -- ---------------------------------------------------------------------------------------------
@@ -486,6 +505,8 @@ grant execute on function public.admin_set_meta(text, jsonb) to authenticated;
 grant execute on function public.admin_set_season_end(timestamptz) to authenticated;
 grant execute on function public.admin_add_player(text, text, text, integer) to authenticated;
 grant execute on function public.is_admin() to authenticated;
+revoke all on function public.delete_my_account(text) from public, anon;
+grant execute on function public.delete_my_account(text) to authenticated;
 revoke all on function public.accept_terms() from public, anon;
 revoke all on function public.confirm_prize_eligibility() from public, anon;
 revoke all on function public.admin_set_epic(text, text) from public, anon;
