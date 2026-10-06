@@ -411,21 +411,17 @@ function loginHTML(){
   if(v==="account"){
     const pr = S.profile || {};
     const linked = !!pr.discord_id;
-    return shell("Your account", linked ? "You're all set for season prizes." : "Link your Discord to compete for season prizes.", `
+    return shell("Your account", linked ? "Your Discord is linked." : "Link your Discord to show your Discord name and avatar on the leaderboard.", `
       <div class="lg-who"><img id="lgAv" alt="" src="${esc(dcAvatar({avatar:pr.discord_avatar, discord:pr.discord_username, tag:pr.username}))}"><div><span class="label">Username</span><b>${esc(pr.username || "")}</b></div></div>
       <div class="lg-f"><span class="label">Discord</span>
-        ${linked ? `<div class="lg-who"><div><b>@${esc(pr.discord_username || "linked")}</b><small>Verified through Discord. Your Discord name and avatar show on the leaderboard, and you're eligible for prizes.</small></div></div>
+        ${linked ? `<div class="lg-who"><div><b>@${esc(pr.discord_username || "linked")}</b><small>Verified through Discord. Your Discord name and avatar show on the leaderboard.</small></div></div>
           <button class="btn" type="button" id="dcUnlink">Unlink Discord</button>`
         : `<button class="btn dcbtn lg-go" type="button" id="dcLink">Link Discord</button>
-          <small>You'll log in to Discord to confirm it's your account. Only linked traders can win prizes.</small>`}
+          <small>You'll log in to Discord to confirm it's your account.</small>`}
       </div>
       ${!pr.agreed_at ? `<div class="lg-f"><span class="label">Terms</span>
           <small>Please confirm you're 13 or older and agree to the <a href="/terms.html" target="_blank" rel="noopener">Terms of Service</a> and <a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a> to keep trading.</small>
-          <button class="btn gold" type="button" id="termsOk">I'm 13+ and I agree</button></div>`
-        : `<div class="lg-f"><span class="label">Prize eligibility</span>${pr.prize_ok_at
-          ? `<small><b>Confirmed.</b> You can win season prizes${linked ? "" : " once your Discord is linked"}.</small>`
-          : `<small>To win prizes you must be 18 or older (or have a parent or guardian's permission) and accept the <a href="/prize-rules.html" target="_blank" rel="noopener">Official Prize Rules</a>.</small>
-            <button class="btn" type="button" id="prizeOk">I'm eligible and accept the Prize Rules</button>`}</div>`}
+          <button class="btn gold" type="button" id="termsOk">I'm 13+ and I agree</button></div>` : ""}
       <button class="btn lg-go" type="button" id="lgOut">Log out</button>
       <button class="lg-skip" type="button" id="lgSkip">Close</button>`);
   }
@@ -536,7 +532,7 @@ function renderDcCard(){
   el.hidden = !u;
   if(!u) return;
   el.innerHTML = `<div><span class="label">Community</span><h3>${esc(w?.name || "Storm Exchange Discord")}</h3>
-    <p>${w && Number.isFinite(w.presence_count) ? `<b class="dc-online"><i></i>${fmt(w.presence_count)} online now</b> · ` : ""}Talk picks, call the next breakout, and claim season prizes. Link Discord on your account and you're added automatically.</p></div>
+    <p>${w && Number.isFinite(w.presence_count) ? `<b class="dc-online"><i></i>${fmt(w.presence_count)} online now</b> · ` : ""}Talk picks, call the next breakout, and compare calls with other traders. Link Discord on your account and you're added automatically.</p></div>
     <a class="btn dcbtn" href="${esc(u)}" target="_blank" rel="noopener noreferrer">Join the server</a>`;
 }
 function renderSeason(){
@@ -626,7 +622,6 @@ function adminHTML(){
     <form id="discordForm">
       <div class="field"><label class="label" for="dcInvite">Discord invite link</label><input id="dcInvite" placeholder="https://discord.gg/yourserver" value="${esc(S.discord?.invite||"")}"></div>
       <div class="field"><label class="label" for="dcGuild">Discord server ID</label><input id="dcGuild" inputmode="numeric" maxlength="20" placeholder="e.g. 1234567890123456789" value="${esc(S.discord?.guild_id||"")}"></div>
-      <div class="field"><label class="label" for="dcClaims">Prize claims channel</label><input id="dcClaims" maxlength="32" placeholder="#prize-claims" value="${esc(S.discord?.claims||"")}"></div>
       <button class="btn gold" type="submit">Save Discord</button>
     </form>
     <p class="label" style="margin:10px 0 0;text-transform:none;letter-spacing:0">To end a season and start the next, ask Claude to roll it over. That saves the top Discord-linked finishers as past champions, re-IPOs every player at their current Storm Rating and resets everyone to ${fmt(START_CASH)} gold bars.</p></div>`;
@@ -757,10 +752,10 @@ function leadersShell(){
   const s = curSeason;
   return `${s ? `<div class="season-head"><div><span class="label">${seasonOver() ? "Final standings" : "Season standings"}</span><h3>${esc(s.name)}</h3></div>
       <span class="label" style="text-transform:none;letter-spacing:0">${seasonOver() ? "Ended "+dtLabel(Date.parse(s.end))+"." : "Ends "+dtLabel(Date.parse(s.end))+" · "+daysLeft()}</span></div>` : ""}
-    <div class="prize"><div><b>Prizes for the top traders every season</b>
-      <p>Only traders with a linked Discord account can win. Link yours from your account (top right), join the Storm Exchange Discord, and winners are confirmed in ${S.discord?.claims ? `<b>${esc(S.discord.claims)}</b>` : "the prize claims channel"}.</p></div><span class="dc-slot"></span></div>
+    <div class="prize"><div><b>Show your Discord on the leaderboard</b>
+      <p>Link Discord from your account (top right) to show your Discord name and avatar here, and join the Storm Exchange Discord to talk picks.</p></div><span class="dc-slot"></span></div>
     <div class="tbl"><table><thead><tr><th>#</th><th>Trader</th><th class="r">Net worth</th><th class="r">Return</th><th>Biggest bet</th></tr></thead><tbody id="lbBody"><tr><td colspan="5" class="label">Loading traders…</td></tr></tbody></table></div>
-    <p class="label" style="text-transform:none;letter-spacing:0;margin-top:10px">Net worth is calculated on the server from live market values. Everyone starts each season with ${fmt(START_CASH)} gold bars. Traders without a linked Discord are listed but can't win prizes.</p>
+    <p class="label" style="text-transform:none;letter-spacing:0;margin-top:10px">Net worth is calculated on the server from live market values. Everyone starts each season with ${fmt(START_CASH)} gold bars.</p>
     ${pastHTML()}`;
 }
 function pastHTML(){
@@ -786,7 +781,7 @@ function fillLeaders(){
     const big = Object.entries(t.pf.pos||{}).map(([pid,pos])=>({pid,pos,v:posValue(pos,byId(pid)?.price??pos.avg)})).sort((a,b)=>b.v-a.v)[0];
     const r = t.nw/START_CASH-1;
     const tr = document.createElement("tr"); tr.className = [isMe ? "lb-me" : "", t.ok ? "" : "lb-flag"].join(" ").trim();
-    tr.innerHTML = `<td class="${rk && rk<=3?"medal":"num"}">${rk || "—"}</td><td><img class="av" alt=""><span class="nm"></span><span class="dc" hidden></span>${t.ok ? "" : `<span class="flag" title="Link Discord to be eligible for prizes">No Discord</span>`}</td><td class="r num">${fmt(t.nw)}</td><td class="r num ${cls(r)}">${pct(r)}</td><td>${big?`<span class="mine ${big.pos.side}" style="margin:0 6px 0 0">${big.pos.side==="long"?"UP":"DOWN"}</span>${esc(byId(big.pid)?.name||big.pid)}`:`<span class="label" style="text-transform:none;letter-spacing:0">All gold bars</span>`}</td>`;
+    tr.innerHTML = `<td class="${rk && rk<=3?"medal":"num"}">${rk || "—"}</td><td><img class="av" alt=""><span class="nm"></span><span class="dc" hidden></span></td><td class="r num">${fmt(t.nw)}</td><td class="r num ${cls(r)}">${pct(r)}</td><td>${big?`<span class="mine ${big.pos.side}" style="margin:0 6px 0 0">${big.pos.side==="long"?"UP":"DOWN"}</span>${esc(byId(big.pid)?.name||big.pid)}`:`<span class="label" style="text-transform:none;letter-spacing:0">All gold bars</span>`}</td>`;
     const img = tr.querySelector("img"), src = dcAvatar({avatar:t.avatar, discord:t.discord, tag:t.name});
     if(src){ img.classList.add("dav"); img.src = src; img.onerror = ()=>img.remove(); } else img.remove();
     tr.querySelector(".nm").textContent = (t.name || "Trader") + (isMe ? " (you)" : "");
@@ -1017,10 +1012,10 @@ document.addEventListener("click", e=>{
   if(el.id==="acct"){ showAuth(S.uid ? "account" : "login"); return; }
   if(el.dataset.auth){ showAuth(el.dataset.auth); return; }
   if(el.id==="dcLink"){ linkDiscord(); return; }
-  if(el.id==="termsOk" || el.id==="prizeOk"){
-    sb.rpc(el.id==="termsOk" ? "accept_terms" : "confirm_prize_eligibility").then(async ({error})=>{
+  if(el.id==="termsOk"){
+    sb.rpc("accept_terms").then(async ({error})=>{
       if(error) return toast(niceErr(error));
-      await loadProfile(); renderLogin(true); toast(el.id==="termsOk" ? "Thanks, you're all set." : "You're eligible for season prizes."); });
+      await loadProfile(); renderLogin(true); toast("Thanks, you're all set."); });
     return; }
   if(el.dataset.epicsave){ saveEpic(el.dataset.epicsave); return; }
   if(el.id==="dcUnlink"){ unlinkDiscord(); return; }
@@ -1072,7 +1067,7 @@ document.addEventListener("submit", e=>{
   }
   if(e.target.id==="discordForm"){
     e.preventDefault();
-    const invite = document.getElementById("dcInvite").value.trim(), claims = document.getElementById("dcClaims").value.trim().slice(0,32);
+    const invite = document.getElementById("dcInvite").value.trim(), claims = S.discord?.claims || "";
     const guild_id = document.getElementById("dcGuild").value.trim();
     if(invite && !DC_INVITE_RE.test(invite)) return toast("Use an invite link like https://discord.gg/yourserver");
     if(guild_id && !/^\d{17,20}$/.test(guild_id)) return toast("The server ID is a 17–20 digit number (right-click your server → Copy Server ID).");
@@ -1207,7 +1202,7 @@ function homeHTML(){
         <p>Click any player for their market chart, Storm Rating, and game-by-game results from FNCS, Victory Cash Cups and Performance Evaluations.</p></div>
       <div class="step"><span class="no">5</span><h4>Climb the leaderboard</h4>
         <div class="demo" aria-hidden="true"><div class="lbd"><div class="r1"><span>Rival A</span><b>31,400</b></div><div class="r2"><span>Rival B</span><b>29,950</b></div><div class="you"><span>You</span><b>33,120</b></div></div></div>
-        <p>Your net worth updates live as prices move. Sell into the hype after a big event or hold for the next one. The top traders when the season ends win prizes, claimed in our Discord, and then everyone restarts at 25,000.</p></div>
+        <p>Your net worth updates live as prices move. Sell into the hype after a big event or hold for the next one. When the season ends the final standings are saved as the season's champions, and everyone restarts at 25,000.</p></div>
     </div>
     <div class="how-cta"><button class="btn gold" data-tab="market">Start trading</button><button class="btn" data-tab="leaders">See the leaderboard</button></div>
   </section>`;
@@ -1715,7 +1710,7 @@ async function boot(){
         if(r.data?.joined) joined = " You've been added to the Storm Exchange Discord.";
         else if(r.data?.alreadyMember) joined = " You're verified in the Storm Exchange Discord.";
       }
-      toast("Discord linked. You're eligible for season prizes." + joined);
+      toast("Discord linked." + joined);
     }
   }
   derive(); render();

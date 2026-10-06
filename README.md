@@ -1,6 +1,6 @@
 # Storm Exchange
 
-A Fortnite pro-player stock market: bet up or down on pros, climb the season leaderboard, win prizes.
+A Fortnite pro-player stock market: bet up or down on pros, climb the season leaderboard.
 
 ```
 web/              the website (plain HTML/CSS/JS, no build step)
@@ -21,8 +21,8 @@ vercel.json       hosting settings + security headers
 - **Accounts:** username + password through Supabase Auth (passwords are hashed by Supabase, never stored by us).
   Logging in with a username is checked server-side, and 5 wrong passwords lock that username for 15 minutes.
   Email is only used to confirm the account and reset passwords; it's never shown.
-- **Discord:** "Link Discord" logs in to Discord itself, so linked accounts are verified. Only linked
-  traders can win prizes; their real Discord name and avatar show on the leaderboard.
+- **Discord:** "Link Discord" logs in to Discord itself, so linked accounts are verified. Linked
+  traders' real Discord name and avatar show on the leaderboard.
 - **Trades run on the server.** The browser can only *read* the market. Every trade goes through the
   `trade()` database function, which prices the order, checks gold bars, the 40% cap and position rules,
   and updates everything in one transaction. Nobody can edit their own gold bars or positions.
@@ -124,6 +124,6 @@ Repository secrets (Settings → Secrets and variables → Actions): `SUPABASE_U
   `python -m unittest discover -s tests -v`.
 
 ## Legal pages
-`web/terms.html`, `web/privacy.html` and `web/prize-rules.html`, linked from the footer and the sign-up form. New accounts
-must confirm they're 13+ and accept them (`supabase/site_updates.sql`); winning a prize also needs 18+ (or a guardian's
-permission) and accepting the Prize Rules.
+`web/terms.html` and `web/privacy.html`, linked from the footer and the sign-up form. New accounts must confirm they're
+13+ and accept them (`supabase/site_updates.sql`). There are no prizes yet; the database keeps an unused
+`confirm_prize_eligibility()` for when they're added (they'll need Official Prize Rules and a legal review first).
